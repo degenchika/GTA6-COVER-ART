@@ -1,0 +1,40 @@
+@font-face {
+  font-family: "Bebas Neue";
+  src: url("./fonts/BebasNeue-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Archivo Black";
+  src: url("./fonts/ArchivoBlack-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+html, body { margin: 0; min-height: 100%; background: #0d0a14; color: #f5f2fa; font: 15px/1.45 system-ui, sans-serif; }
+.app { display: flex; gap: 28px; align-items: flex-start; justify-content: center; padding: 24px; box-sizing: border-box; }
+.controls { display: flex; flex-direction: column; gap: 16px; width: 320px; flex: none; }
+.controls h1 { margin: 0; font-family: "Bebas Neue", "Archivo Black", "Arial Black", sans-serif; font-size: 44px; line-height: 0.95; letter-spacing: 1px; }
+.controls h1 span { background: linear-gradient(90deg, #ff2e88, #ff7a18); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.tag { margin: 0; color: #b9b2c9; }
+fieldset { border: 1px solid #2b2340; border-radius: 10px; padding: 12px; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+legend { font-weight: 700; padding: 0 6px; color: #ffd9ec; }
+label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 13px; }
+input[type=text] { font: inherit; padding: 8px; border: 1px solid #3a3152; border-radius: 6px; background: #171226; color: #f5f2fa; }
+input[type=file] { font: inherit; }
+input[type=range] { width: 100%; accent-color: #ff2e88; }
+button { font: inherit; font-weight: 600; padding: 8px 10px; border: 1px solid #3a3152; border-radius: 8px; background: #1c1628; color: #f5f2fa; cursor: pointer; }
+button:hover { border-color: #ff2e88; }
+button.active { background: linear-gradient(90deg, #ff2e88, #ff7a18); border-color: transparent; color: #fff; }
+button.primary { background: linear-gradient(90deg, #ff2e88, #ff7a18); border: 0; font-weight: 800; padding: 12px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.row button { flex: 1 1 auto; }
+.hint { margin: 0; font-size: 12px; color: #9a92ad; }
+#status { margin: 0; min-height: 20px; font-size: 13px; color: #8fe3b0; }
+canvas { width: min(72vh, 58vw); height: auto; aspect-ratio: 1 / 1; background: #0b0910; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55); border-radius: 4px; cursor: grab; }
+canvas:active { cursor: grabbing; }
+body.shot-cover .controls { display: none; }
+body.shot-cover .app { padding: 0; }
+body.shot-cover canvas { width: 100vw; height: 100vh; aspect-ratio: auto; box-shadow: none; border-radius: 0; }

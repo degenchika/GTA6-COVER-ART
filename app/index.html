@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vice Cover Studio — GTA-style cover art maker</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<main class="app">
+  <section class="controls" aria-label="Cover controls">
+    <h1>Vice Cover <span>Studio</span></h1>
+    <p class="tag">Turn a photo and a caption into GTA-poster-style cover art. Everything stays on your machine — no uploads.</p>
+
+    <button id="quick" type="button" class="primary">⚡ Quick cover from samples</button>
+
+    <fieldset>
+      <legend>Panels — click the canvas to pick one</legend>
+      <div class="row" role="group" aria-label="Pick a panel">
+        <button type="button" data-panel="0" class="active">Panel 1</button>
+        <button type="button" data-panel="1">Panel 2</button>
+        <button type="button" data-panel="2">Panel 3</button>
+        <button type="button" data-panel="3">Panel 4</button>
+      </div>
+      <p id="panelLabel" class="hint">Panel 1 — no photo yet</p>
+      <div class="row">
+        <button id="samplePier" type="button">Sample: Pier</button>
+        <button id="sampleBoulevard" type="button">Sample: Boulevard</button>
+      </div>
+      <label>Or your own photo <input id="photo" type="file" accept="image/*"></label>
+      <label>Zoom <input id="zoom" type="range" min="1" max="4" step="0.05" value="1"></label>
+      <p class="hint">Drag the photo on the canvas to reposition it, scroll to zoom.</p>
+      <button id="resetCrop" type="button">Reset crop</button>
+    </fieldset>
+
+    <fieldset>
+      <legend>Layout</legend>
+      <div class="row" role="group" aria-label="Panel layout">
+        <button type="button" data-layout="hero">Hero</button>
+        <button type="button" data-layout="duo">Duo</button>
+        <button type="button" data-layout="trio" class="active">Trio</button>
+        <button type="button" data-layout="quad">Quad</button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Colour grade</legend>
+      <div class="row" role="group" aria-label="Colour grade">
+        <button type="button" data-grade="sunset" class="active">Vice Sunset</button>
+        <button type="button" data-grade="neon">Neon Nights</button>
+        <button type="button" data-grade="dusk">Palm Dusk</button>
+        <button type="button" data-grade="noir">Mono Noir</button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Caption</legend>
+      <label>Words <input id="caption" type="text" maxlength="40" value="Sunset Heist"></label>
+      <label>Size <input id="titleSize" type="range" min="0.7" max="1.4" step="0.05" value="1"></label>
+      <div class="row" role="group" aria-label="Caption position">
+        <button type="button" data-titlepos="top">Top</button>
+        <button type="button" data-titlepos="bottom" class="active">Bottom</button>
+      </div>
+      <div class="row" role="group" aria-label="Caption colour">
+        <button type="button" data-titlecolor="#ffffff" class="active">White</button>
+        <button type="button" data-titlecolor="#111111">Black</button>
+        <button type="button" data-titlecolor="#ff2e88">Hot pink</button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Export</legend>
+      <div class="row" role="group" aria-label="Export size">
+        <button type="button" data-size="1080x1080" class="active">1080 × 1080</button>
+        <button type="button" data-size="1080x1350">1080 × 1350</button>
+        <button type="button" data-size="1920x1080">1920 × 1080</button>
+      </div>
+      <button id="export" type="button" class="primary">Export PNG 1080 × 1080</button>
+      <p id="status" role="status"></p>
+    </fieldset>
+  </section>
+  <canvas id="cover" width="1080" height="1080" aria-label="The cover preview"></canvas>
+</main>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
