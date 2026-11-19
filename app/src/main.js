@@ -1,6 +1,8 @@
 // Vice Cover Studio — page wiring: pick photos, arrange panels, set the
 // caption and grade, export a PNG. A `?shot=` query sets up a fixed scene
-// for a screenshot instead (./shots.js).
+// for a screenshot instead (./shots.js). Switching to a layout with more
+// panels fills its empty panels from the samples, and the preview canvas
+// follows the chosen export size.
 import { drawCover, layoutRects, LAYOUTS, GRADES } from './cover.js';
 import { runShot } from './shots.js';
 
@@ -138,10 +140,32 @@ document.getElementById('resetCrop').addEventListener('click', () => {
   redraw();
 });
 
+// When a layout grows, fill its empty panels from the samples so the cover
+// never shows a bare "ADD A PHOTO" panel in the middle of a finished cover.
+async function fillEmptyPanels() {
+  const n = panelCount();
+  for (let i = 0; i < n; i++) {
+    if (!state.slots[i].img) {
+      const name = i % 2 === 0 ? 'pier' : 'boulevard';
+      await setSlotPhoto(i, `samples/${name}.jpg`, name);
+    }
+  }
+}
+
+// The preview canvas follows the chosen export size, so what you see is
+// the shape you will get.
+function applyExportSize() {
+  const [w, h] = state.exportSize.split('x').map(Number);
+  canvas.width = w;
+  canvas.height = h;
+  redraw();
+}
+
 // Layout, grade, caption.
 document.querySelectorAll('[data-layout]').forEach((b) => {
   b.addEventListener('click', () => {
     state.layout = b.dataset.layout;
+    fillEmptyPanels();
     if (selected >= panelCount()) selected = 0;
     document.querySelectorAll('[data-layout]').forEach((x) => x.classList.toggle('active', x === b));
     redraw();
@@ -181,6 +205,7 @@ document.querySelectorAll('[data-size]').forEach((b) => {
     state.exportSize = b.dataset.size;
     document.querySelectorAll('[data-size]').forEach((x) => x.classList.toggle('active', x === b));
     document.getElementById('export').textContent = `Export PNG ${state.exportSize.replace('x', ' × ')}`;
+    applyExportSize();
   });
 });
 
@@ -232,6 +257,7 @@ if (shot) {
       captionInput.value = state.title;
     }
     if (q.get('titlepos') === 'top' || q.get('titlepos') === 'bottom') state.titlePos = q.get('titlepos');
+    if (q.get('titlecolor')) state.titleColor = q.get('titlecolor');
     if (shot === 'cover') {
       canvas.width = Number(q.get('cw') || 1080);
       canvas.height = Number(q.get('ch') || 1080);

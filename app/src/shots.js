@@ -5,7 +5,14 @@
 // window.__shotReady is set once the scene has painted with fonts loaded.
 export async function runShot(shot, query, setup, redraw) {
   if (shot === 'cover') document.body.classList.add('shot-cover');
-  await setup(query);
+  try {
+    await setup(query);
+  } catch (e) {
+    // A failed scene reports itself instead of hanging the screenshot.
+    window.__shotError = String((e && e.message) || e);
+    window.__shotReady = true;
+    return;
+  }
   try {
     await Promise.all([
       document.fonts.load('100px "Bebas Neue"'),

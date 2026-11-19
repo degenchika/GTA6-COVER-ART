@@ -6,13 +6,15 @@
 // canvas's own size, so the same state renders the preview and any export
 // size. No Rockstar art, logo or font is used anywhere: the lettering is
 // Bebas Neue / Archivo Black (OFL, bundled under app/fonts/) and the grades
-// are our own gradients.
+// are our own gradients. Layouts: Hero, Duo, Trio, Quad and Strip. Grades:
+// Vice Sunset, Neon Nights, Palm Dusk, Mono Noir and Golden Hour.
 
 export const LAYOUTS = {
   hero: { panels: 1, name: 'Hero' },
   duo: { panels: 2, name: 'Duo' },
   trio: { panels: 3, name: 'Trio' },
   quad: { panels: 4, name: 'Quad' },
+  strip: { panels: 3, name: 'Strip' },
 };
 
 export const GRADES = {
@@ -20,22 +22,32 @@ export const GRADES = {
     name: 'Vice Sunset',
     stops: [[0, 'rgba(255,150,60,0)'], [0.55, 'rgba(255,110,70,0.18)'], [1, 'rgba(214,40,130,0.55)']],
     wash: 'rgba(255,120,40,0.10)',
+    bar: ['#ff2e88', '#ff7a18', '#22d3ee'],
   },
   neon: {
     name: 'Neon Nights',
     stops: [[0, 'rgba(255,0,170,0.42)'], [0.5, 'rgba(120,40,220,0.18)'], [1, 'rgba(0,210,255,0.42)']],
     wash: 'rgba(160,0,200,0.10)',
+    bar: ['#ff00aa', '#7b2ff7', '#00d2ff'],
   },
   dusk: {
     name: 'Palm Dusk',
     stops: [[0, 'rgba(0,190,170,0.30)'], [0.55, 'rgba(40,90,180,0.16)'], [1, 'rgba(110,40,170,0.50)']],
     wash: 'rgba(20,120,160,0.10)',
+    bar: ['#2ee6c8', '#6a5cff', '#ff2e88'],
   },
   noir: {
     name: 'Mono Noir',
     stops: [[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.28)']],
     wash: 'rgba(0,0,0,0.12)',
     gray: true,
+    bar: ['#ffffff', '#9a92ad', '#55506a'],
+  },
+  gold: {
+    name: 'Golden Hour',
+    stops: [[0, 'rgba(255,214,100,0)'], [0.5, 'rgba(255,170,40,0.16)'], [1, 'rgba(180,90,0,0.50)']],
+    wash: 'rgba(255,190,60,0.10)',
+    bar: ['#ffd664', '#ffaa28', '#ff7a18'],
   },
 };
 
@@ -65,6 +77,16 @@ export function layoutRects(layout, w, h) {
         { x: 0, y: h / 2 + g / 2, w: w / 2 - g / 2, h: h / 2 - g / 2 },
         { x: w / 2 + g / 2, y: h / 2 + g / 2, w: w / 2 - g / 2, h: h / 2 - g / 2 },
       ];
+    case 'strip': {
+      // A wide strip across the top, two panels side by side below it.
+      const topH = h * 0.55 - g / 2;
+      const botH = h * 0.45 - g / 2;
+      return [
+        { x: 0, y: 0, w, h: topH },
+        { x: 0, y: topH + g, w: w / 2 - g / 2, h: botH },
+        { x: w / 2 + g / 2, y: topH + g, w: w / 2 - g / 2, h: botH },
+      ];
+    }
     default: // hero
       return [{ x: 0, y: 0, w, h }];
   }
@@ -127,6 +149,7 @@ function drawPanel(ctx, r, slot, grade) {
 function drawTitle(ctx, state, w, h) {
   const text = (state.title || '').trim().toUpperCase();
   if (!text) return;
+  const grade = GRADES[state.grade] || GRADES.sunset;
   const top = state.titlePos === 'top';
   const bandH = h * 0.3;
   const y0 = top ? 0 : h - bandH;
@@ -163,14 +186,16 @@ function drawTitle(ctx, state, w, h) {
   ctx.shadowColor = 'transparent';
   ctx.shadowBlur = 0;
   ctx.shadowOffsetY = 0;
-  // Neon underline bar, the width of the caption.
+  // Neon underline bar, the width of the caption. It takes its colours
+  // from the active grade, so the caption always matches the poster's mood.
   const tw = ctx.measureText(text).width;
   const barH = Math.max(3, size * 0.045);
   const barY = baseline + size * 0.16;
+  const barColors = grade.bar || ['#ff2e88', '#ff7a18', '#22d3ee'];
   const bar = ctx.createLinearGradient(w / 2 - tw / 2, 0, w / 2 + tw / 2, 0);
-  bar.addColorStop(0, '#ff2e88');
-  bar.addColorStop(0.5, '#ff7a18');
-  bar.addColorStop(1, '#22d3ee');
+  bar.addColorStop(0, barColors[0]);
+  bar.addColorStop(0.5, barColors[1]);
+  bar.addColorStop(1, barColors[2]);
   ctx.fillStyle = bar;
   ctx.fillRect(w / 2 - tw / 2, barY, tw, barH);
 }

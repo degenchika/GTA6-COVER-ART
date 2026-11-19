@@ -7,12 +7,14 @@
 // directory and writes /output/dossier.json with the vendored make.fun
 // library, the summary the judge reads. It writes the same bytes on every
 // run and touches nothing outside the repository and the output directory.
+// Before the dossier is written it refuses a broken entry: every screenshot
+// must exist and fit the scorer's 256 KiB cap.
 //
 // Serve the app locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-app.ts';
@@ -27,6 +29,46 @@ const shotsOut = join(outDir, 'screenshots');
 mkdirSync(shotsOut, { recursive: true });
 if (existsSync(join(root, 'screenshots'))) {
   cpSync(join(root, 'screenshots'), shotsOut, { recursive: true });
+}
+
+// Refuse a broken entry before the dossier is written: the app must be
+// there, and every screenshot must exist and fit the scorer's caps
+// (at most 4 screenshots, each at most 256 KiB).
+const SCREENSHOT_MAX_BYTES = 262144;
+const SCREENSHOT_MAX_COUNT = 4;
+if (!existsSync(join(root, 'app'))) {
+  throw new Error('app/ is missing from the repository');
+}
+const shotsDir = join(root, 'screenshots');
+if (!existsSync(shotsDir)) {
+  throw new Error('screenshots/ is missing from the repository');
+}
+const shotFiles = readdirSync(shotsDir).filter((f) => !f.startsWith('.'));
+if (shotFiles.length === 0) {
+  throw new Error('screenshots/ is empty');
+}
+if (shotFiles.length > SCREENSHOT_MAX_COUNT) {
+  throw new Error(`too many screenshots: ${shotFiles.length} (max ${SCREENSHOT_MAX_COUNT})`);
+}
+for (const f of shotFiles) {
+  const bytes = statSync(join(shotsDir, f)).size;
+  if (bytes > SCREENSHOT_MAX_BYTES) {
+    throw new Error(`screenshot ${f} is ${bytes} bytes, over the ${SCREENSHOT_MAX_BYTES} cap`);
+  }
+}
+
+// Every shot shots.json declares must have its file on disk, so a renamed
+// shot can never ship a cover the dossier does not show.
+let declared: { name?: unknown }[];
+try {
+  declared = JSON.parse(readFileSync(join(root, 'shots.json'), 'utf8'));
+} catch {
+  throw new Error('shots.json is missing or not valid JSON');
+}
+for (const shot of declared) {
+  if (typeof shot.name !== 'string' || !existsSync(join(shotsDir, shot.name))) {
+    throw new Error(`shots.json declares ${String(shot.name)} but it is not in screenshots/`);
+  }
 }
 
 // The scorer's own caps (reference/gate.json): only text_max_bytes shapes
