@@ -27,6 +27,7 @@ input[type=file] { font: inherit; }
 input[type=range] { width: 100%; accent-color: #ff2e88; }
 button { font: inherit; font-weight: 600; padding: 8px 10px; border: 1px solid #3a3152; border-radius: 8px; background: #1c1628; color: #f5f2fa; cursor: pointer; }
 button:hover { border-color: #ff2e88; }
+button:focus-visible, input:focus-visible { outline: 2px solid #22d3ee; outline-offset: 2px; }
 button.active { background: linear-gradient(90deg, #ff2e88, #ff7a18); border-color: transparent; color: #fff; }
 button.primary { background: linear-gradient(90deg, #ff2e88, #ff7a18); border: 0; font-weight: 800; padding: 12px; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; }

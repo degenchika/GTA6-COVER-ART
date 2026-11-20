@@ -14,7 +14,7 @@
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-app.ts';
@@ -22,6 +22,9 @@ import { buildDossier } from './vendor/makefun-app.ts';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
+// Start from a clean output directory: a failed earlier run must never
+// leave stale files behind for the dossier to pick up.
+rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
 cpSync(join(root, 'app'), join(outDir, 'app'), { recursive: true });
 
@@ -71,6 +74,30 @@ for (const shot of declared) {
   }
 }
 
+// The app itself must fit the scorer's caps too: at most 993 files and
+// 48 MiB in all, so a stray build artefact can never ship inside the app.
+const APP_MAX_FILES = 993;
+const APP_MAX_BYTES = 50331648;
+let appFiles = 0;
+let appBytes = 0;
+const walk = (dir: string) => {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, entry.name);
+    if (entry.isDirectory()) walk(p);
+    else if (entry.isFile()) {
+      appFiles += 1;
+      appBytes += statSync(p).size;
+    }
+  }
+};
+walk(join(root, 'app'));
+if (appFiles > APP_MAX_FILES) {
+  throw new Error(`app/ has ${appFiles} files, over the ${APP_MAX_FILES} cap`);
+}
+if (appBytes > APP_MAX_BYTES) {
+  throw new Error(`app/ is ${appBytes} bytes, over the ${APP_MAX_BYTES} cap`);
+}
+
 // The scorer's own caps (reference/gate.json): only text_max_bytes shapes
 // the bytes; the others refuse an entry the scorer would refuse (more than
 // 4 screenshots or one over 256 KiB; more than 993 files in app/ or 48 MiB
@@ -83,3 +110,13 @@ const dossier = buildDossier(outDir, {
   app_path_max_bytes: 1000,
 });
 writeFileSync(join(outDir, 'dossier.json'), dossier);
+
+// The dossier the judge reads must carry the cover summary, the image
+// list, the schema and the text: refuse a dossier that lost a section.
+// (buildDossier returns canonical JSON bytes, not a string.)
+const dossierJson = JSON.parse(new TextDecoder().decode(dossier)) as Record<string, unknown>;
+for (const key of ['cover', 'images', 'schema', 'text']) {
+  if (!(key in dossierJson)) {
+    throw new Error(`dossier.json is missing its ${key} section`);
+  }
+}

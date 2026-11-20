@@ -5,6 +5,12 @@
 // window.__shotReady is set once the scene has painted with fonts loaded.
 export async function runShot(shot, query, setup, redraw) {
   if (shot === 'cover') document.body.classList.add('shot-cover');
+  if (shot !== 'cover' && shot !== 'editor') {
+    // An unknown scene name is a broken screenshot setup, not a hang.
+    window.__shotError = `unknown shot: ${shot}`;
+    window.__shotReady = true;
+    return;
+  }
   try {
     await setup(query);
   } catch (e) {

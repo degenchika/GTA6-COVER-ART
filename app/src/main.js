@@ -1,8 +1,11 @@
-// Vice Cover Studio — page wiring: pick photos, arrange panels, set the
-// caption and grade, export a PNG. A `?shot=` query sets up a fixed scene
-// for a screenshot instead (./shots.js). Switching to a layout with more
-// panels fills its empty panels from the samples, and the preview canvas
-// follows the chosen export size.
+// Vice Cover Studio — page wiring, rewritten for round 3.
+//
+// Pick photos, arrange panels, set the caption and grade, export a PNG.
+// A `?shot=` query sets up a fixed scene for a screenshot instead
+// (./shots.js). Switching to a layout with more panels fills its empty
+// panels from the samples, and the preview canvas follows the chosen
+// export size. Keyboard: keys 1–4 pick a panel; double-click a panel to
+// reset its crop.
 import { drawCover, layoutRects, LAYOUTS, GRADES } from './cover.js';
 import { runShot } from './shots.js';
 
@@ -10,6 +13,7 @@ const canvas = document.getElementById('cover');
 const captionInput = document.getElementById('caption');
 const statusEl = document.getElementById('status');
 const zoomInput = document.getElementById('zoom');
+const panelLabel = document.getElementById('panelLabel');
 
 function newSlot() {
   return { img: null, name: null, zoom: 1, ox: 0, oy: 0 };
@@ -33,7 +37,7 @@ function panelCount() {
 
 function redraw() {
   drawCover(canvas, state);
-  // Selection outline on the preview only, never on an export.
+  // Selection outline on the preview only, never on an export or a shot.
   if (!document.body.classList.contains('shot-cover') && selected < panelCount()) {
     const ctx = canvas.getContext('2d');
     const r = layoutRects(state.layout, canvas.width, canvas.height)[selected];
@@ -49,7 +53,7 @@ function redraw() {
   });
   const slot = state.slots[selected];
   zoomInput.value = slot.zoom;
-  document.getElementById('panelLabel').textContent = `Panel ${selected + 1} — ${slot.name || 'no photo yet'}`;
+  panelLabel.textContent = `Panel ${selected + 1} — ${slot.name || 'no photo yet'}`;
 }
 
 export function loadImage(url) {
@@ -64,6 +68,14 @@ export function loadImage(url) {
 async function setSlotPhoto(i, url, name) {
   const img = await loadImage(url);
   state.slots[i] = { img, name, zoom: 1, ox: 0, oy: 0 };
+  redraw();
+}
+
+function resetSlotCrop(i) {
+  const slot = state.slots[i];
+  slot.zoom = 1;
+  slot.ox = 0;
+  slot.oy = 0;
   redraw();
 }
 
@@ -84,7 +96,7 @@ document.getElementById('photo').addEventListener('change', async (e) => {
 });
 
 // Panel selection and per-panel crop: click a panel to pick it, drag to pan,
-// scroll to zoom.
+// scroll to zoom, double-click to reset the crop, keys 1–4 to pick a panel.
 function canvasPoint(e) {
   const rect = canvas.getBoundingClientRect();
   return {
@@ -92,15 +104,17 @@ function canvasPoint(e) {
     y: ((e.clientY - rect.top) / rect.height) * canvas.height,
   };
 }
+function panelAt(p) {
+  const rects = layoutRects(state.layout, canvas.width, canvas.height);
+  return rects.findIndex((r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h);
+}
 let drag = null;
 canvas.addEventListener('pointerdown', (e) => {
-  const p = canvasPoint(e);
-  const rects = layoutRects(state.layout, canvas.width, canvas.height);
-  const hit = rects.findIndex((r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h);
+  const hit = panelAt(canvasPoint(e));
   if (hit < 0) return;
   selected = hit;
   const slot = state.slots[selected];
-  drag = { x: p.x, y: p.y, ox: slot.ox, oy: slot.oy, moved: false };
+  drag = { x: canvasPoint(e).x, y: canvasPoint(e).y, ox: slot.ox, oy: slot.oy, moved: false };
   canvas.setPointerCapture(e.pointerId);
   redraw();
 });
@@ -116,12 +130,21 @@ canvas.addEventListener('pointermove', (e) => {
   redraw();
 });
 canvas.addEventListener('pointerup', () => { drag = null; });
+canvas.addEventListener('dblclick', () => resetSlotCrop(selected));
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
   const slot = state.slots[selected];
   slot.zoom = Math.min(4, Math.max(1, slot.zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
   redraw();
 }, { passive: false });
+document.addEventListener('keydown', (e) => {
+  if (e.target.matches('input, textarea')) return;
+  const n = Number(e.key);
+  if (n >= 1 && n <= 4) {
+    selected = n - 1;
+    redraw();
+  }
+});
 document.querySelectorAll('[data-panel]').forEach((b) => {
   b.addEventListener('click', () => {
     selected = Number(b.dataset.panel);
@@ -132,13 +155,7 @@ zoomInput.addEventListener('input', () => {
   state.slots[selected].zoom = Number(zoomInput.value);
   redraw();
 });
-document.getElementById('resetCrop').addEventListener('click', () => {
-  const slot = state.slots[selected];
-  slot.zoom = 1;
-  slot.ox = 0;
-  slot.oy = 0;
-  redraw();
-});
+document.getElementById('resetCrop').addEventListener('click', () => resetSlotCrop(selected));
 
 // When a layout grows, fill its empty panels from the samples so the cover
 // never shows a bare "ADD A PHOTO" panel in the middle of a finished cover.
@@ -161,20 +178,24 @@ function applyExportSize() {
   redraw();
 }
 
+function markActive(selector, el) {
+  document.querySelectorAll(selector).forEach((x) => x.classList.toggle('active', x === el));
+}
+
 // Layout, grade, caption.
 document.querySelectorAll('[data-layout]').forEach((b) => {
   b.addEventListener('click', () => {
     state.layout = b.dataset.layout;
     fillEmptyPanels();
     if (selected >= panelCount()) selected = 0;
-    document.querySelectorAll('[data-layout]').forEach((x) => x.classList.toggle('active', x === b));
+    markActive('[data-layout]', b);
     redraw();
   });
 });
 document.querySelectorAll('[data-grade]').forEach((b) => {
   b.addEventListener('click', () => {
     state.grade = b.dataset.grade;
-    document.querySelectorAll('[data-grade]').forEach((x) => x.classList.toggle('active', x === b));
+    markActive('[data-grade]', b);
     redraw();
   });
 });
@@ -189,21 +210,21 @@ document.getElementById('titleSize').addEventListener('input', (e) => {
 document.querySelectorAll('[data-titlepos]').forEach((b) => {
   b.addEventListener('click', () => {
     state.titlePos = b.dataset.titlepos;
-    document.querySelectorAll('[data-titlepos]').forEach((x) => x.classList.toggle('active', x === b));
+    markActive('[data-titlepos]', b);
     redraw();
   });
 });
 document.querySelectorAll('[data-titlecolor]').forEach((b) => {
   b.addEventListener('click', () => {
     state.titleColor = b.dataset.titlecolor;
-    document.querySelectorAll('[data-titlecolor]').forEach((x) => x.classList.toggle('active', x === b));
+    markActive('[data-titlecolor]', b);
     redraw();
   });
 });
 document.querySelectorAll('[data-size]').forEach((b) => {
   b.addEventListener('click', () => {
     state.exportSize = b.dataset.size;
-    document.querySelectorAll('[data-size]').forEach((x) => x.classList.toggle('active', x === b));
+    markActive('[data-size]', b);
     document.getElementById('export').textContent = `Export PNG ${state.exportSize.replace('x', ' × ')}`;
     applyExportSize();
   });

@@ -1,13 +1,15 @@
-// Vice Cover Studio — the cover renderer.
+// Vice Cover Studio — the cover renderer, rewritten for round 3.
 //
-// Draws a multi-panel GTA-poster-style cover on any 2D canvas: panels of one
-// photo with different crops (or several photos), a colour grade, and a big
-// display caption with a heavy outline. Every coordinate is derived from the
-// canvas's own size, so the same state renders the preview and any export
-// size. No Rockstar art, logo or font is used anywhere: the lettering is
-// Bebas Neue / Archivo Black (OFL, bundled under app/fonts/) and the grades
-// are our own gradients. Layouts: Hero, Duo, Trio, Quad and Strip. Grades:
-// Vice Sunset, Neon Nights, Palm Dusk, Mono Noir and Golden Hour.
+// Renders a multi-panel GTA-poster-style cover on any 2D canvas: one photo
+// per panel with its own crop, a colour grade, and a big display caption
+// with a heavy outline. Every coordinate is derived from the canvas's own
+// size, so the preview and every export size share one code path. No
+// Rockstar art, logo or font anywhere: the lettering is Bebas Neue /
+// Archivo Black (OFL, bundled under app/fonts/) and the grades are our own
+// gradients.
+//
+// Layouts: Hero, Duo, Trio, Quad, Strip and Column. Grades: Vice Sunset,
+// Neon Nights, Palm Dusk, Mono Noir, Golden Hour and Midnight Drive.
 
 export const LAYOUTS = {
   hero: { panels: 1, name: 'Hero' },
@@ -15,6 +17,7 @@ export const LAYOUTS = {
   trio: { panels: 3, name: 'Trio' },
   quad: { panels: 4, name: 'Quad' },
   strip: { panels: 3, name: 'Strip' },
+  column: { panels: 3, name: 'Column' },
 };
 
 export const GRADES = {
@@ -49,33 +52,45 @@ export const GRADES = {
     wash: 'rgba(255,190,60,0.10)',
     bar: ['#ffd664', '#ffaa28', '#ff7a18'],
   },
+  midnight: {
+    name: 'Midnight Drive',
+    stops: [[0, 'rgba(0,140,255,0.32)'], [0.5, 'rgba(60,60,200,0.18)'], [1, 'rgba(8,0,48,0.55)']],
+    wash: 'rgba(0,90,220,0.10)',
+    bar: ['#00c2ff', '#4d7cfe', '#b45cff'],
+  },
 };
 
 function clamp(v, lo, hi) {
   return Math.min(hi, Math.max(lo, v));
 }
 
-/** The panel rectangles for a layout, in canvas pixels, with a thin gutter. */
+/** Gutter between panels, in canvas pixels: thin, but never invisible. */
+function gutter(w, h) {
+  return Math.max(3, Math.round(Math.min(w, h) * 0.008));
+}
+
+/** The panel rectangles for a layout, in canvas pixels. */
 export function layoutRects(layout, w, h) {
-  const g = Math.max(3, Math.round(Math.min(w, h) * 0.008));
+  const g = gutter(w, h);
+  const half = (n) => n / 2 - g / 2;
   switch (layout) {
     case 'duo':
       return [
-        { x: 0, y: 0, w: w / 2 - g / 2, h },
-        { x: w / 2 + g / 2, y: 0, w: w / 2 - g / 2, h },
+        { x: 0, y: 0, w: half(w), h },
+        { x: w / 2 + g / 2, y: 0, w: half(w), h },
       ];
     case 'trio':
       return [
         { x: 0, y: 0, w: w * 0.62 - g / 2, h },
-        { x: w * 0.62 + g / 2, y: 0, w: w * 0.38 - g / 2, h: h / 2 - g / 2 },
-        { x: w * 0.62 + g / 2, y: h / 2 + g / 2, w: w * 0.38 - g / 2, h: h / 2 - g / 2 },
+        { x: w * 0.62 + g / 2, y: 0, w: w * 0.38 - g / 2, h: half(h) },
+        { x: w * 0.62 + g / 2, y: h / 2 + g / 2, w: w * 0.38 - g / 2, h: half(h) },
       ];
     case 'quad':
       return [
-        { x: 0, y: 0, w: w / 2 - g / 2, h: h / 2 - g / 2 },
-        { x: w / 2 + g / 2, y: 0, w: w / 2 - g / 2, h: h / 2 - g / 2 },
-        { x: 0, y: h / 2 + g / 2, w: w / 2 - g / 2, h: h / 2 - g / 2 },
-        { x: w / 2 + g / 2, y: h / 2 + g / 2, w: w / 2 - g / 2, h: h / 2 - g / 2 },
+        { x: 0, y: 0, w: half(w), h: half(h) },
+        { x: w / 2 + g / 2, y: 0, w: half(w), h: half(h) },
+        { x: 0, y: h / 2 + g / 2, w: half(w), h: half(h) },
+        { x: w / 2 + g / 2, y: h / 2 + g / 2, w: half(w), h: half(h) },
       ];
     case 'strip': {
       // A wide strip across the top, two panels side by side below it.
@@ -83,8 +98,17 @@ export function layoutRects(layout, w, h) {
       const botH = h * 0.45 - g / 2;
       return [
         { x: 0, y: 0, w, h: topH },
-        { x: 0, y: topH + g, w: w / 2 - g / 2, h: botH },
-        { x: w / 2 + g / 2, y: topH + g, w: w / 2 - g / 2, h: botH },
+        { x: 0, y: topH + g, w: half(w), h: botH },
+        { x: w / 2 + g / 2, y: topH + g, w: half(w), h: botH },
+      ];
+    }
+    case 'column': {
+      // Three equal vertical columns, for tall portraits side by side.
+      const cw = (w - 2 * g) / 3;
+      return [
+        { x: 0, y: 0, w: cw, h },
+        { x: cw + g, y: 0, w: cw, h },
+        { x: 2 * (cw + g), y: 0, w: cw, h },
       ];
     }
     default: // hero
@@ -92,7 +116,13 @@ export function layoutRects(layout, w, h) {
   }
 }
 
-function drawPanel(ctx, r, slot, grade) {
+/** Cover-fit scale for a photo inside a panel rectangle. */
+function coverScale(imgW, imgH, rectW, rectH, zoom) {
+  return Math.max(rectW / imgW, rectH / imgH) * (zoom || 1);
+}
+
+/** One panel: the photo (cover-fit, panned, zoomed), the grade, a vignette. */
+function paintPanel(ctx, r, slot, grade) {
   ctx.save();
   ctx.beginPath();
   ctx.rect(r.x, r.y, r.w, r.h);
@@ -100,13 +130,12 @@ function drawPanel(ctx, r, slot, grade) {
   if (slot && slot.img) {
     const iw = slot.img.naturalWidth;
     const ih = slot.img.naturalHeight;
-    const base = Math.max(r.w / iw, r.h / ih) * (slot.zoom || 1);
-    const dw = iw * base;
-    const dh = ih * base;
-    const maxOx = Math.max(0, (dw - r.w) / 2);
-    const maxOy = Math.max(0, (dh - r.h) / 2);
-    const ox = clamp(slot.ox || 0, -maxOx, maxOx);
-    const oy = clamp(slot.oy || 0, -maxOy, maxOy);
+    const scale = coverScale(iw, ih, r.w, r.h, slot.zoom);
+    const dw = iw * scale;
+    const dh = ih * scale;
+    // Pan is clamped so the photo can never slide out of its panel.
+    const ox = clamp(slot.ox || 0, -Math.max(0, (dw - r.w) / 2), Math.max(0, (dw - r.w) / 2));
+    const oy = clamp(slot.oy || 0, -Math.max(0, (dh - r.h) / 2), Math.max(0, (dh - r.h) / 2));
     if (grade.gray) ctx.filter = 'grayscale(1) contrast(1.12) brightness(1.02)';
     ctx.drawImage(slot.img, r.x + (r.w - dw) / 2 + ox, r.y + (r.h - dh) / 2 + oy, dw, dh);
     ctx.filter = 'none';
@@ -146,7 +175,8 @@ function drawPanel(ctx, r, slot, grade) {
   ctx.restore();
 }
 
-function drawTitle(ctx, state, w, h) {
+/** The big caption: scrim, fitted display type with a heavy outline, grade bar. */
+function paintTitle(ctx, state, w, h) {
   const text = (state.title || '').trim().toUpperCase();
   if (!text) return;
   const grade = GRADES[state.grade] || GRADES.sunset;
@@ -186,8 +216,8 @@ function drawTitle(ctx, state, w, h) {
   ctx.shadowColor = 'transparent';
   ctx.shadowBlur = 0;
   ctx.shadowOffsetY = 0;
-  // Neon underline bar, the width of the caption. It takes its colours
-  // from the active grade, so the caption always matches the poster's mood.
+  // Underline bar, the width of the caption. It takes its colours from the
+  // active grade, so the caption always matches the poster's mood.
   const tw = ctx.measureText(text).width;
   const barH = Math.max(3, size * 0.045);
   const barY = baseline + size * 0.16;
@@ -209,6 +239,6 @@ export function drawCover(canvas, state) {
   ctx.fillRect(0, 0, w, h);
   const rects = layoutRects(state.layout, w, h);
   const n = (LAYOUTS[state.layout] || LAYOUTS.hero).panels;
-  for (let i = 0; i < n; i++) drawPanel(ctx, rects[i], state.slots[i], grade);
-  drawTitle(ctx, state, w, h);
+  for (let i = 0; i < n; i++) paintPanel(ctx, rects[i], state.slots[i], grade);
+  paintTitle(ctx, state, w, h);
 }
