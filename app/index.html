@@ -12,34 +12,34 @@
     <h1>Vice Cover <span>Studio</span></h1>
     <p class="tag">Turn a photo and a caption into GTA-poster-style cover art. Everything stays on your machine — no uploads.</p>
 
-    <button id="quick" type="button" class="primary">⚡ Quick cover from samples</button>
+    <button id="quickCover" type="button" class="primary">⚡ Quick cover from samples</button>
 
     <fieldset>
       <legend>Panels — click the canvas to pick one</legend>
       <div class="row" role="group" aria-label="Pick a panel">
-        <button type="button" data-panel="0" class="active">Panel 1</button>
-        <button type="button" data-panel="1">Panel 2</button>
-        <button type="button" data-panel="2">Panel 3</button>
-        <button type="button" data-panel="3">Panel 4</button>
+        <button type="button" data-slot="0" class="active">Panel 1</button>
+        <button type="button" data-slot="1">Panel 2</button>
+        <button type="button" data-slot="2">Panel 3</button>
+        <button type="button" data-slot="3">Panel 4</button>
       </div>
-      <p id="panelLabel" class="hint">Panel 1 — no photo yet</p>
+      <p id="slotLabel" class="hint">Panel 1 — no photo yet</p>
       <div class="row">
-        <button id="samplePier" type="button">Sample: Pier</button>
-        <button id="sampleBoulevard" type="button">Sample: Boulevard</button>
+        <button id="pickPier" type="button">Sample: Pier</button>
+        <button id="pickBoulevard" type="button">Sample: Boulevard</button>
       </div>
-      <label>Or your own photo <input id="photo" type="file" accept="image/*"></label>
-      <label>Zoom <input id="zoom" type="range" min="1" max="4" step="0.05" value="1"></label>
+      <label>Or your own photo <input id="filePick" type="file" accept="image/*"></label>
+      <label>Zoom <input id="zoomRange" type="range" min="1" max="4" step="0.05" value="1"></label>
       <p class="hint">Drag the photo on the canvas to reposition it, scroll to zoom. Keys 1–4 pick a panel, double-click resets its crop. Give the picked panel a photo filter below.</p>
-      <button id="resetCrop" type="button">Reset crop</button>
+      <button id="cropReset" type="button">Reset crop</button>
     </fieldset>
 
     <fieldset>
       <legend>Photo filter — applies to the picked panel</legend>
       <div class="row filters" role="group" aria-label="Photo filter">
-        <button type="button" data-tone="none" class="active">Original</button>
-        <button type="button" data-tone="mono">B&amp;W</button>
-        <button type="button" data-tone="sepia">Sepia</button>
-        <button type="button" data-tone="punch">Punch</button>
+        <button type="button" data-filter="none" class="active">Original</button>
+        <button type="button" data-filter="mono">B&amp;W</button>
+        <button type="button" data-filter="sepia">Sepia</button>
+        <button type="button" data-filter="punch">Punch</button>
       </div>
       <p class="hint">A filter tones one panel's photo before the colour grade goes on, and it ships in the exported PNG.</p>
     </fieldset>
@@ -47,54 +47,68 @@
     <fieldset>
       <legend>Layout</legend>
       <div class="row" role="group" aria-label="Panel layout">
-        <button type="button" data-layout="hero">Hero</button>
-        <button type="button" data-layout="duo">Duo</button>
-        <button type="button" data-layout="trio" class="active">Trio</button>
-        <button type="button" data-layout="quad">Quad</button>
-        <button type="button" data-layout="strip">Strip</button>
-        <button type="button" data-layout="column">Column</button>
+        <button type="button" data-arrange="hero">Hero</button>
+        <button type="button" data-arrange="duo">Duo</button>
+        <button type="button" data-arrange="trio" class="active">Trio</button>
+        <button type="button" data-arrange="quad">Quad</button>
+        <button type="button" data-arrange="strip">Strip</button>
+        <button type="button" data-arrange="column">Column</button>
       </div>
     </fieldset>
 
     <fieldset>
       <legend>Colour grade</legend>
       <div class="row" role="group" aria-label="Colour grade">
-        <button type="button" data-grade="sunset" class="active">Vice Sunset</button>
-        <button type="button" data-grade="neon">Neon Nights</button>
-        <button type="button" data-grade="dusk">Palm Dusk</button>
-        <button type="button" data-grade="noir">Mono Noir</button>
-        <button type="button" data-grade="gold">Golden Hour</button>
-        <button type="button" data-grade="midnight">Midnight Drive</button>
+        <button type="button" data-mood="sunset" class="active">Vice Sunset</button>
+        <button type="button" data-mood="neon">Neon Nights</button>
+        <button type="button" data-mood="dusk">Palm Dusk</button>
+        <button type="button" data-mood="noir">Mono Noir</button>
+        <button type="button" data-mood="gold">Golden Hour</button>
+        <button type="button" data-mood="midnight">Midnight Drive</button>
       </div>
     </fieldset>
 
     <fieldset>
       <legend>Caption</legend>
-      <label>Words <input id="caption" type="text" maxlength="40" value="Sunset Heist"></label>
-      <label>Size <input id="titleSize" type="range" min="0.7" max="1.4" step="0.05" value="1"></label>
+      <label>Words <input id="titleText" type="text" maxlength="40" value="Sunset Heist"></label>
+      <label>Size <input id="titleSizeRange" type="range" min="0.7" max="1.4" step="0.05" value="1"></label>
       <div class="row" role="group" aria-label="Caption position">
-        <button type="button" data-titlepos="top">Top</button>
-        <button type="button" data-titlepos="bottom" class="active">Bottom</button>
+        <button type="button" data-title-at="top">Top</button>
+        <button type="button" data-title-at="bottom" class="active">Bottom</button>
       </div>
       <div class="row" role="group" aria-label="Caption colour">
-        <button type="button" data-titlecolor="#ffffff" class="active">White</button>
-        <button type="button" data-titlecolor="#111111">Black</button>
-        <button type="button" data-titlecolor="#ff2e88">Hot pink</button>
+        <button type="button" data-title-ink="#ffffff" class="active">White</button>
+        <button type="button" data-title-ink="#111111">Black</button>
+        <button type="button" data-title-ink="#ff2e88">Hot pink</button>
       </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Tagline — a second line you can park anywhere</legend>
+      <label>Words <input id="tagText" type="text" maxlength="40" value="" placeholder="e.g. VICE CITY"></label>
+      <label>Across <input id="tagX" type="range" min="5" max="95" step="1" value="50"></label>
+      <label>Down <input id="tagY" type="range" min="5" max="95" step="1" value="10"></label>
+      <label>Size <input id="tagSize" type="range" min="2" max="9" step="0.5" value="4.5"></label>
+      <div class="row" role="group" aria-label="Tagline colour">
+        <button type="button" data-tag-ink="#ffffff" class="active">White</button>
+        <button type="button" data-tag-ink="#111111">Black</button>
+        <button type="button" data-tag-ink="#ffd664">Gold</button>
+      </div>
+      <p class="hint">The tagline renders in Archivo Black, on top of the cover, and ships in the exported PNG. Leave it empty to hide it.</p>
     </fieldset>
 
     <fieldset>
       <legend>Export</legend>
       <div class="row" role="group" aria-label="Export size">
-        <button type="button" data-size="1080x1080" class="active">1080 × 1080</button>
-        <button type="button" data-size="1080x1350">1080 × 1350</button>
-        <button type="button" data-size="1920x1080">1920 × 1080</button>
+        <button type="button" data-export="1080x1080" class="active">1080 × 1080</button>
+        <button type="button" data-export="1080x1350">1080 × 1350</button>
+        <button type="button" data-export="1920x1080">1920 × 1080</button>
       </div>
-      <button id="export" type="button" class="primary">Export PNG 1080 × 1080</button>
-      <p id="status" role="status"></p>
+      <button id="saveBtn" type="button" class="primary">Export PNG 1080 × 1080</button>
+      <p id="note" role="status"></p>
     </fieldset>
   </section>
-  <canvas id="cover" width="1080" height="1080" aria-label="The cover preview"></canvas>
+  <canvas id="stage" width="1080" height="1080" aria-label="The cover preview"></canvas>
 </main>
 <script type="module" src="./src/main.js"></script>
 </body>

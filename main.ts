@@ -60,6 +60,15 @@ for (const f of shotFiles) {
   }
 }
 
+// All screenshots together must stay under 1,000,000 bytes — tighter than
+// four files at the per-file cap, so this check can actually bite when the
+// set as a whole gets too heavy.
+const SCREENSHOTS_TOTAL_MAX_BYTES = 1000000;
+const shotsTotalBytes = shotFiles.reduce((sum, f) => sum + statSync(join(shotsDir, f)).size, 0);
+if (shotsTotalBytes > SCREENSHOTS_TOTAL_MAX_BYTES) {
+  throw new Error(`screenshots/ total ${shotsTotalBytes} bytes, over the ${SCREENSHOTS_TOTAL_MAX_BYTES} cap`);
+}
+
 // A screenshot must actually be a JPEG, not a renamed file: refuse one
 // whose first bytes are not the JPEG magic (FF D8 FF).
 for (const f of shotFiles) {
@@ -85,21 +94,29 @@ for (const shot of declared) {
 
 // The app itself must fit the scorer's caps too: at most 993 files and
 // 48 MiB in all, so a stray build artefact can never ship inside the app.
+// No file under app/ may be empty either: a zero-byte font or script would
+// load as nothing and break the app in the grader's browser.
 const APP_MAX_FILES = 993;
 const APP_MAX_BYTES = 50331648;
 let appFiles = 0;
 let appBytes = 0;
+const emptyAppFiles = [];
 const walk = (dir: string) => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, entry.name);
     if (entry.isDirectory()) walk(p);
     else if (entry.isFile()) {
       appFiles += 1;
-      appBytes += statSync(p).size;
+      const size = statSync(p).size;
+      appBytes += size;
+      if (size === 0) emptyAppFiles.push(p);
     }
   }
 };
 walk(join(root, 'app'));
+if (emptyAppFiles.length > 0) {
+  throw new Error(`app/ has ${emptyAppFiles.length} empty file(s): ${emptyAppFiles.join(', ')}`);
+}
 if (appFiles > APP_MAX_FILES) {
   throw new Error(`app/ has ${appFiles} files, over the ${APP_MAX_FILES} cap`);
 }

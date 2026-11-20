@@ -1,66 +1,107 @@
-// Vice Cover Studio — page wiring, rebuilt from scratch for round 4.
+// Vice Cover Studio — page wiring, third build (round 5).
 //
-// Pick photos, arrange panels, tone each photo, set the caption and grade,
-// export a PNG. A `?shot=` query sets up a fixed scene for a screenshot
-// instead (./shots.js). Growing to a layout with more panels fills its
-// empty panels from the samples, and the preview canvas follows the chosen
-// export size. Keyboard: keys 1–4 pick a panel; double-click a panel to
-// reset its crop.
-import { renderPoster, panelBoxes, PANEL_LAYOUTS, COLOUR_GRADES, PHOTO_TONES } from './cover.js';
-import { playScene } from './shots.js';
+// Pick photos, arrange slots, filter each photo, set the headline and a
+// movable tagline, pick a mood, export a PNG. A `?shot=` query arranges a
+// fixed scene for a screenshot instead (see ./shots.js). Growing to a
+// layout with more slots fills its empty slots from the samples, and the
+// preview canvas follows the chosen export size. Keys 1-4 pick a slot;
+// double-click a slot to reset its crop.
+//
+// The controls are one declarative table: each row names a data attribute,
+// how to read the poster's current value for it, and what setting it does.
+// Wiring, active-marks and syncing all run off that one table, so a new
+// control row is one more row — no more wiring code.
+import { drawCover, computeSlots, GRID_LAYOUTS, MOODS, FILTERS } from './cover.js';
+import { runScene } from './shots.js';
 
-const sheet = document.getElementById('cover');
-const wordsInput = document.getElementById('caption');
-const noteEl = document.getElementById('status');
-const zoomEl = document.getElementById('zoom');
-const cellLabel = document.getElementById('panelLabel');
+const stage = document.getElementById('stage');
+const titleText = document.getElementById('titleText');
+const noteEl = document.getElementById('note');
+const zoomRange = document.getElementById('zoomRange');
+const slotLabel = document.getElementById('slotLabel');
+const saveBtn = document.getElementById('saveBtn');
 
-function freshCell() {
-  return { photo: null, label: null, scale: 1, dx: 0, dy: 0, tone: 'none' };
+function blankSlot() {
+  return { img: null, name: null, zoom: 1, ox: 0, oy: 0, filter: 'none' };
 }
 
-const board = {
-  layout: 'trio',
-  grade: 'sunset',
-  headline: 'Sunset Heist',
-  headlineScale: 1,
-  headlineSpot: 'bottom',
-  headlineInk: '#ffffff',
-  size: '1080x1080',
-  cells: [freshCell(), freshCell(), freshCell(), freshCell()],
+const poster = {
+  arrange: 'trio',
+  mood: 'sunset',
+  title: 'Sunset Heist',
+  titleSize: 1,
+  titleAt: 'bottom',
+  titleInk: '#ffffff',
+  exportSize: '1080x1080',
+  tagline: { text: '', x: 0.5, y: 0.1, size: 0.045, ink: '#ffffff' },
+  slots: [blankSlot(), blankSlot(), blankSlot(), blankSlot()],
 };
-let activeCell = 0;
+let selected = 0;
 
-function cellCount() {
-  return (PANEL_LAYOUTS[board.layout] || PANEL_LAYOUTS.hero).cells;
+function slotTotal() {
+  return (GRID_LAYOUTS[poster.arrange] || GRID_LAYOUTS.hero).spans.length;
 }
 
-// Paint the board, then mark the active panel and sync every control row
-// with it. The pink dashed frame is preview-only, never on an export.
-function paint() {
-  renderPoster(sheet, board);
-  if (!document.body.classList.contains('shot-cover') && activeCell < cellCount()) {
-    const ctx = sheet.getContext('2d');
-    const box = panelBoxes(board.layout, sheet.width, sheet.height)[activeCell];
-    ctx.save();
-    ctx.strokeStyle = '#ff2e88';
-    ctx.lineWidth = 4;
-    ctx.setLineDash([14, 8]);
-    ctx.strokeRect(box.x + 3, box.y + 3, box.w - 6, box.h - 6);
-    ctx.restore();
+// Repaint the poster, then outline the picked slot and sync every control
+// with the poster's current state. The pink dashed outline is preview-only
+// and never lands on an export.
+function redraw() {
+  drawCover(stage, poster);
+  outlineSelection();
+  syncPanelUI();
+}
+
+function outlineSelection() {
+  if (document.body.classList.contains('shot-cover')) return;
+  if (selected >= slotTotal()) return;
+  const ctx = stage.getContext('2d');
+  const box = computeSlots(poster.arrange, stage.width, stage.height)[selected];
+  ctx.save();
+  ctx.strokeStyle = '#ff2e88';
+  ctx.lineWidth = 4;
+  ctx.setLineDash([14, 8]);
+  ctx.strokeRect(box.x + 3, box.y + 3, box.w - 6, box.h - 6);
+  ctx.restore();
+}
+
+function syncPanelUI() {
+  markGroups();
+  const slot = poster.slots[selected];
+  zoomRange.value = slot.zoom;
+  slotLabel.textContent = `Panel ${selected + 1} — ${slot.name || 'no photo yet'}`;
+}
+
+// One row per button group: the data attribute, the poster's current value
+// for it, and what happens when a button in the group is pressed.
+const CONTROL_GROUPS = [
+  { key: 'slot', read: () => String(selected), set: (v) => { selected = Number(v); } },
+  { key: 'arrange', read: () => poster.arrange, set: (v) => { poster.arrange = v; topUpSlots(); if (selected >= slotTotal()) selected = 0; } },
+  { key: 'mood', read: () => poster.mood, set: (v) => { poster.mood = v; } },
+  { key: 'title-at', read: () => poster.titleAt, set: (v) => { poster.titleAt = v; } },
+  { key: 'title-ink', read: () => poster.titleInk, set: (v) => { poster.titleInk = v; } },
+  { key: 'filter', read: () => poster.slots[selected].filter, set: (v) => { poster.slots[selected].filter = v; } },
+  { key: 'tag-ink', read: () => poster.tagline.ink, set: (v) => { poster.tagline.ink = v; } },
+  { key: 'export', read: () => poster.exportSize, set: (v) => { poster.exportSize = v; saveBtn.textContent = `Export PNG ${v.replace('x', ' × ')}`; matchPreview(); } },
+];
+
+function markGroups() {
+  for (const group of CONTROL_GROUPS) {
+    document.querySelectorAll(`[data-${group.key}]`).forEach((btn) => {
+      btn.classList.toggle('active', btn.getAttribute(`data-${group.key}`) === group.read());
+    });
   }
-  document.querySelectorAll('[data-panel]').forEach((btn) => {
-    btn.classList.toggle('active', Number(btn.dataset.panel) === activeCell);
-  });
-  document.querySelectorAll('[data-tone]').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.tone === board.cells[activeCell].tone);
-  });
-  const cell = board.cells[activeCell];
-  zoomEl.value = cell.scale;
-  cellLabel.textContent = `Panel ${activeCell + 1} — ${cell.label || 'no photo yet'}`;
 }
 
-export function photoFrom(url) {
+for (const group of CONTROL_GROUPS) {
+  document.querySelectorAll(`[data-${group.key}]`).forEach((btn) => {
+    btn.addEventListener('click', () => {
+      group.set(btn.getAttribute(`data-${group.key}`));
+      redraw();
+    });
+  });
+}
+
+export function loadPicture(url) {
   return new Promise((resolve, reject) => {
     const pic = new Image();
     pic.onload = () => resolve(pic);
@@ -69,167 +110,139 @@ export function photoFrom(url) {
   });
 }
 
-async function putPhoto(i, url, label) {
-  const pic = await photoFrom(url);
-  const keepTone = board.cells[i].tone;
-  board.cells[i] = { photo: pic, label, scale: 1, dx: 0, dy: 0, tone: keepTone };
-  paint();
+async function placePhoto(i, url, name) {
+  const pic = await loadPicture(url);
+  const keepFilter = poster.slots[i].filter;
+  poster.slots[i] = { img: pic, name, zoom: 1, ox: 0, oy: 0, filter: keepFilter };
+  redraw();
 }
 
-function clearCrop(i) {
-  const cell = board.cells[i];
-  cell.scale = 1;
-  cell.dx = 0;
-  cell.dy = 0;
-  paint();
+function resetCrop(i) {
+  const slot = poster.slots[i];
+  slot.zoom = 1;
+  slot.ox = 0;
+  slot.oy = 0;
+  redraw();
 }
-
-// One delegated handler per button group: the button's data attribute names
-// the value, the callback applies it, the group re-marks itself, and the
-// board repaints. Keeps every control row wired the same way.
-function wireGroup(attr, apply) {
-  document.querySelectorAll(`[${attr}]`).forEach((btn) => {
-    btn.addEventListener('click', () => {
-      apply(btn);
-      document.querySelectorAll(`[${attr}]`).forEach((x) => x.classList.toggle('active', x === btn));
-      paint();
-    });
-  });
-}
-
-wireGroup('data-panel', (btn) => { activeCell = Number(btn.dataset.panel); });
-wireGroup('data-layout', (btn) => {
-  board.layout = btn.dataset.layout;
-  fillGaps();
-  if (activeCell >= cellCount()) activeCell = 0;
-});
-wireGroup('data-grade', (btn) => { board.grade = btn.dataset.grade; });
-wireGroup('data-titlepos', (btn) => { board.headlineSpot = btn.dataset.titlepos; });
-wireGroup('data-titlecolor', (btn) => { board.headlineInk = btn.dataset.titlecolor; });
-wireGroup('data-tone', (btn) => { board.cells[activeCell].tone = btn.dataset.tone; });
-wireGroup('data-size', (btn) => {
-  board.size = btn.dataset.size;
-  document.getElementById('export').textContent = `Export PNG ${board.size.replace('x', ' × ')}`;
-  resizePreview();
-});
 
 // Photo sources: the two free samples, or the person's own file.
-document.getElementById('samplePier').addEventListener('click', () => {
-  putPhoto(activeCell, 'samples/pier.jpg', 'pier');
+document.getElementById('pickPier').addEventListener('click', () => {
+  placePhoto(selected, 'samples/pier.jpg', 'pier');
 });
-document.getElementById('sampleBoulevard').addEventListener('click', () => {
-  putPhoto(activeCell, 'samples/boulevard.jpg', 'boulevard');
+document.getElementById('pickBoulevard').addEventListener('click', () => {
+  placePhoto(selected, 'samples/boulevard.jpg', 'boulevard');
 });
-document.getElementById('photo').addEventListener('change', async (e) => {
+document.getElementById('filePick').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  const pic = await photoFrom(URL.createObjectURL(file));
-  board.cells[activeCell] = { photo: pic, label: file.name, scale: 1, dx: 0, dy: 0, tone: board.cells[activeCell].tone };
-  paint();
-  noteEl.textContent = `Loaded ${file.name} into panel ${activeCell + 1}.`;
+  const pic = await loadPicture(URL.createObjectURL(file));
+  poster.slots[selected] = { img: pic, name: file.name, zoom: 1, ox: 0, oy: 0, filter: poster.slots[selected].filter };
+  redraw();
+  noteEl.textContent = `Loaded ${file.name} into panel ${selected + 1}.`;
 });
 
-// Panel picking and per-panel crop: click a panel to pick it, drag to pan,
-// scroll to zoom, double-click to reset the crop, keys 1–4 to pick a panel.
-function sheetPoint(e) {
-  const rect = sheet.getBoundingClientRect();
+// Picking a slot and cropping it: click a slot to pick it, drag to pan,
+// scroll to zoom, double-click to reset the crop, keys 1-4 to pick a slot.
+function stagePoint(e) {
+  const rect = stage.getBoundingClientRect();
   return {
-    x: ((e.clientX - rect.left) / rect.width) * sheet.width,
-    y: ((e.clientY - rect.top) / rect.height) * sheet.height,
+    x: ((e.clientX - rect.left) / rect.width) * stage.width,
+    y: ((e.clientY - rect.top) / rect.height) * stage.height,
   };
 }
-function cellAt(p) {
-  const boxes = panelBoxes(board.layout, sheet.width, sheet.height);
+function slotIndexAt(p) {
+  const boxes = computeSlots(poster.arrange, stage.width, stage.height);
   return boxes.findIndex((b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h);
 }
-let grab = null;
-sheet.addEventListener('pointerdown', (e) => {
-  const hit = cellAt(sheetPoint(e));
+let drag = null;
+stage.addEventListener('pointerdown', (e) => {
+  const hit = slotIndexAt(stagePoint(e));
   if (hit < 0) return;
-  activeCell = hit;
-  const cell = board.cells[activeCell];
-  grab = { x: sheetPoint(e).x, y: sheetPoint(e).y, dx: cell.dx, dy: cell.dy, moved: false };
-  sheet.setPointerCapture(e.pointerId);
-  paint();
+  selected = hit;
+  const slot = poster.slots[selected];
+  const p = stagePoint(e);
+  drag = { startX: p.x, startY: p.y, baseX: slot.ox, baseY: slot.oy, moved: false };
+  stage.setPointerCapture(e.pointerId);
+  redraw();
 });
-sheet.addEventListener('pointermove', (e) => {
-  if (!grab) return;
-  const p = sheetPoint(e);
-  const dx = p.x - grab.x;
-  const dy = p.y - grab.y;
-  if (Math.abs(dx) + Math.abs(dy) > 3) grab.moved = true;
-  const cell = board.cells[activeCell];
-  cell.dx = grab.dx + dx;
-  cell.dy = grab.dy + dy;
-  paint();
+stage.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const p = stagePoint(e);
+  const shiftX = p.x - drag.startX;
+  const shiftY = p.y - drag.startY;
+  if (Math.abs(shiftX) + Math.abs(shiftY) > 3) drag.moved = true;
+  const slot = poster.slots[selected];
+  slot.ox = drag.baseX + shiftX;
+  slot.oy = drag.baseY + shiftY;
+  redraw();
 });
-sheet.addEventListener('pointerup', () => { grab = null; });
-sheet.addEventListener('dblclick', () => clearCrop(activeCell));
-sheet.addEventListener('wheel', (e) => {
+stage.addEventListener('pointerup', () => { drag = null; });
+stage.addEventListener('dblclick', () => resetCrop(selected));
+stage.addEventListener('wheel', (e) => {
   e.preventDefault();
-  const cell = board.cells[activeCell];
-  cell.scale = Math.min(4, Math.max(1, cell.scale * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
-  paint();
+  const slot = poster.slots[selected];
+  const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
+  slot.zoom = Math.min(4, Math.max(1, slot.zoom * factor));
+  redraw();
 }, { passive: false });
 document.addEventListener('keydown', (e) => {
   if (e.target instanceof Element && e.target.matches('input, textarea')) return;
   const n = Number(e.key);
-  if (n >= 1 && n <= 4 && n - 1 < cellCount()) {
-    activeCell = n - 1;
-    paint();
+  if (n >= 1 && n <= 4 && n - 1 < slotTotal()) {
+    selected = n - 1;
+    redraw();
   }
 });
-zoomEl.addEventListener('input', () => {
-  board.cells[activeCell].scale = Number(zoomEl.value);
-  paint();
+zoomRange.addEventListener('input', () => {
+  poster.slots[selected].zoom = Number(zoomRange.value);
+  redraw();
 });
-document.getElementById('resetCrop').addEventListener('click', () => clearCrop(activeCell));
+document.getElementById('cropReset').addEventListener('click', () => resetCrop(selected));
 
-// When a layout grows, fill its empty panels from the samples so the cover
-// never shows a bare "ADD PHOTO" panel in the middle of a finished cover.
-async function fillGaps() {
-  const total = cellCount();
+// When a layout grows, fill its empty slots from the samples so the cover
+// never shows a bare "ADD PHOTO" slot in the middle of a finished cover.
+async function topUpSlots() {
+  const total = slotTotal();
   for (let i = 0; i < total; i++) {
-    if (!board.cells[i].photo) {
-      const label = i % 2 === 0 ? 'pier' : 'boulevard';
-      await putPhoto(i, `samples/${label}.jpg`, label);
-    }
+    if (poster.slots[i].img) continue;
+    const name = i % 2 === 0 ? 'pier' : 'boulevard';
+    await placePhoto(i, `samples/${name}.jpg`, name);
   }
 }
 
 // The preview canvas follows the chosen export size, so what you see is
 // the shape you will get.
-function resizePreview() {
-  const [w, h] = board.size.split('x').map(Number);
-  sheet.width = w;
-  sheet.height = h;
-  paint();
+function matchPreview() {
+  const [w, h] = poster.exportSize.split('x').map(Number);
+  stage.width = w;
+  stage.height = h;
+  redraw();
 }
 
 // One-click preset: a finished-looking cover from the samples.
-document.getElementById('quick').addEventListener('click', async () => {
-  board.layout = 'trio';
-  board.grade = 'sunset';
-  board.headline = 'Sunset Heist';
-  board.headlineSpot = 'bottom';
-  wordsInput.value = 'Sunset Heist';
-  document.querySelectorAll('[data-layout]').forEach((x) => x.classList.toggle('active', x.dataset.layout === 'trio'));
-  document.querySelectorAll('[data-grade]').forEach((x) => x.classList.toggle('active', x.dataset.grade === 'sunset'));
-  await putPhoto(0, 'samples/pier.jpg', 'pier');
-  await putPhoto(1, 'samples/boulevard.jpg', 'boulevard');
-  await putPhoto(2, 'samples/pier.jpg', 'pier');
-  activeCell = 0;
+document.getElementById('quickCover').addEventListener('click', async () => {
+  poster.arrange = 'trio';
+  poster.mood = 'sunset';
+  poster.title = 'Sunset Heist';
+  poster.titleAt = 'bottom';
+  titleText.value = 'Sunset Heist';
+  await placePhoto(0, 'samples/pier.jpg', 'pier');
+  await placePhoto(1, 'samples/boulevard.jpg', 'boulevard');
+  await placePhoto(2, 'samples/pier.jpg', 'pier');
+  selected = 0;
   noteEl.textContent = 'Quick cover ready — tweak it, then export.';
 });
 
-// Export: render the same board at the chosen post size and download the PNG.
-async function exportPNG() {
-  const [w, h] = board.size.split('x').map(Number);
+// Export: render the same poster at the chosen post size and download the PNG.
+async function savePNG() {
+  const [w, h] = poster.exportSize.split('x').map(Number);
   const off = document.createElement('canvas');
   off.width = w;
   off.height = h;
-  renderPoster(off, board);
-  const blob = await new Promise((resolve) => off.toBlob(resolve, 'image/png'));
+  drawCover(off, poster);
+  const blob = await new Promise((resolve, reject) => {
+    off.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas did not produce a PNG'))), 'image/png');
+  });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `vice-cover-${w}x${h}.png`;
@@ -237,55 +250,83 @@ async function exportPNG() {
   noteEl.textContent = `Saved vice-cover-${w}x${h}.png (${Math.round(blob.size / 1024)} KB).`;
   return { width: w, height: h, bytes: blob.size };
 }
-document.getElementById('export').addEventListener('click', exportPNG);
+saveBtn.addEventListener('click', savePNG);
 
-// Caption inputs.
-wordsInput.addEventListener('input', () => {
-  board.headline = wordsInput.value;
-  paint();
+// Headline inputs.
+titleText.addEventListener('input', () => {
+  poster.title = titleText.value;
+  redraw();
 });
-document.getElementById('titleSize').addEventListener('input', (e) => {
-  board.headlineScale = Number(e.target.value);
-  paint();
+document.getElementById('titleSizeRange').addEventListener('input', (e) => {
+  poster.titleSize = Number(e.target.value);
+  redraw();
+});
+
+// Tagline inputs: the words, where they sit, how big they are. The tagline
+// is a second line of type that lives on the cover and ships in the export.
+document.getElementById('tagText').addEventListener('input', (e) => {
+  poster.tagline.text = e.target.value;
+  redraw();
+});
+document.getElementById('tagX').addEventListener('input', (e) => {
+  poster.tagline.x = Number(e.target.value) / 100;
+  redraw();
+});
+document.getElementById('tagY').addEventListener('input', (e) => {
+  poster.tagline.y = Number(e.target.value) / 100;
+  redraw();
+});
+document.getElementById('tagSize').addEventListener('input', (e) => {
+  poster.tagline.size = Number(e.target.value) / 100;
+  redraw();
 });
 
 // Test handle: lets an automated check drive the export and read its size.
-window.__app = { board, paint, exportPNG, putPhoto };
+window.__app = { poster, redraw, savePNG, placePhoto, getSelected: () => selected };
 
 // Fixed scenes for screenshots (?shot=cover / ?shot=editor).
-const params = new URLSearchParams(location.search);
-const scene = params.get('shot');
-if (scene) {
-  playScene(scene, params, async (q) => {
-    if (q.get('layout') && PANEL_LAYOUTS[q.get('layout')]) board.layout = q.get('layout');
-    if (q.get('grade') && COLOUR_GRADES[q.get('grade')]) board.grade = q.get('grade');
-    if (q.get('caption') !== null) {
-      board.headline = q.get('caption');
-      wordsInput.value = board.headline;
+const query = new URLSearchParams(location.search);
+const shotName = query.get('shot');
+if (shotName) {
+  runScene(shotName, query, async (q) => {
+    if (q.get('layout') && GRID_LAYOUTS[q.get('layout')]) poster.arrange = q.get('layout');
+    if (q.get('grade') && MOODS[q.get('grade')]) poster.mood = q.get('grade');
+    if (q.get('title') !== null) {
+      poster.title = q.get('title');
+      titleText.value = poster.title;
     }
-    if (q.get('titlepos') === 'top' || q.get('titlepos') === 'bottom') board.headlineSpot = q.get('titlepos');
-    if (q.get('titlecolor')) board.headlineInk = q.get('titlecolor');
-    if (scene === 'cover') {
-      sheet.width = Number(q.get('cw') || 1080);
-      sheet.height = Number(q.get('ch') || 1080);
+    if (q.get('title-at') === 'top' || q.get('title-at') === 'bottom') poster.titleAt = q.get('title-at');
+    if (q.get('title-ink')) poster.titleInk = q.get('title-ink');
+    if (q.get('tagline') !== null) {
+      poster.tagline.text = q.get('tagline');
+      const tagTextEl = document.getElementById('tagText');
+      if (tagTextEl) tagTextEl.value = poster.tagline.text;
+    }
+    if (q.get('tagx') !== null) poster.tagline.x = Number(q.get('tagx')) / 100;
+    if (q.get('tagy') !== null) poster.tagline.y = Number(q.get('tagy')) / 100;
+    if (q.get('tagsize') !== null) poster.tagline.size = Number(q.get('tagsize')) / 100;
+    if (q.get('tagink')) poster.tagline.ink = q.get('tagink');
+    if (shotName === 'cover') {
+      stage.width = Number(q.get('cw') || 1080);
+      stage.height = Number(q.get('ch') || 1080);
     }
     const keys = ['photo', 'photo2', 'photo3', 'photo4'];
-    const total = cellCount();
+    const total = slotTotal();
     for (let i = 0; i < total; i++) {
-      const label = q.get(keys[i]) || (i % 2 === 0 ? 'pier' : 'boulevard');
-      await putPhoto(i, `samples/${label}.jpg`, label);
-      const tone = q.get(`tone${i + 1}`) || q.get('tone');
-      if (tone && PHOTO_TONES[tone]) board.cells[i].tone = tone;
+      const name = q.get(keys[i]) || (i % 2 === 0 ? 'pier' : 'boulevard');
+      await placePhoto(i, `samples/${name}.jpg`, name);
+      const filter = q.get(`filter${i + 1}`) || q.get('filter');
+      if (filter && FILTERS[filter]) poster.slots[i].filter = filter;
     }
-    activeCell = 0;
-    paint();
-  }, paint);
+    selected = 0;
+    redraw();
+  }, redraw);
 } else {
-  // Load the bundled fonts before the first paint so the caption renders in
-  // Bebas Neue, not the fallback.
+  // Load the bundled fonts before the first paint so the type renders in
+  // Bebas Neue / Archivo Black, not the fallback stack.
   Promise.all([
     document.fonts.load('100px "Bebas Neue"'),
     document.fonts.load('100px "Archivo Black"'),
-  ]).catch(() => {}).finally(paint);
-  paint();
+  ]).catch(() => {}).finally(redraw);
+  redraw();
 }

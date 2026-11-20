@@ -1,212 +1,289 @@
-// Vice Cover Studio — poster renderer, rebuilt from scratch for round 4.
+// Vice Cover Studio — cover painter, third build (round 5).
 //
-// A cover is a board: a layout (where the panels sit), a colour grade (the
-// mood), a headline (the big words) and one photo per panel, each with its
-// own crop and tone. renderPoster() paints that board onto any 2D canvas,
-// so the on-screen preview and every exported PNG share exactly one code
-// path. Everything here is our own work — the display type is Bebas Neue /
-// Archivo Black (SIL OFL, bundled under app/fonts/) and there is no
-// Rockstar logo, artwork or font anywhere in the entry.
+// A poster is a weighted grid of photo slots, a mood (colour grade), a
+// headline, and an optional tagline — a second, movable line of type.
+// drawCover() paints that poster onto any 2D canvas, so the on-screen
+// preview and every exported PNG go through exactly the same code.
+// Nothing here is Rockstar's: the lettering is Bebas Neue / Archivo Black
+// (SIL OFL, bundled under app/fonts/) and every pixel is drawn from the
+// person's own photos. Layouts are weighted grids, grades are hex stops,
+// and photo filters are numeric recipes — change a table row and the look
+// changes, without touching the painter.
 
-// --- the catalogue: layouts, grades, photo tones --------------------------
-
-// A layout is a list of fraction boxes [left, top, width, height] measured
-// in canvas units, so adding a layout is one more row in this table and
-// nothing else in the renderer has to change.
-export const PANEL_LAYOUTS = {
-  hero:   { cells: 1, label: 'Hero',   boxes: [[0, 0, 1, 1]] },
-  duo:    { cells: 2, label: 'Duo',    boxes: [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]] },
-  trio:   { cells: 3, label: 'Trio',   boxes: [[0, 0, 0.62, 1], [0.62, 0, 0.38, 0.5], [0.62, 0.5, 0.38, 0.5]] },
-  quad:   { cells: 4, label: 'Quad',   boxes: [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]] },
-  strip:  { cells: 3, label: 'Strip',  boxes: [[0, 0, 1, 0.55], [0, 0.55, 0.5, 0.45], [0.5, 0.55, 0.5, 0.45]] },
-  column: { cells: 3, label: 'Column', boxes: [[0, 0, 1 / 3, 1], [1 / 3, 0, 1 / 3, 1], [2 / 3, 0, 1 / 3, 1]] },
+// --- weighted grids: the layouts -----------------------------------------
+//
+// A layout splits the board into columns and rows of given weights, then
+// hands each slot a span [column, row, columns-spanned, rows-spanned].
+// Weights are fractions of the board, so a layout keeps its proportions at
+// any export size and a new layout is one more row in this table.
+export const GRID_LAYOUTS = {
+  hero:   { label: 'Hero',   cols: [1],          rows: [1],       spans: [[0, 0, 1, 1]] },
+  duo:    { label: 'Duo',    cols: [0.5, 0.5],   rows: [1],       spans: [[0, 0, 1, 1], [1, 0, 1, 1]] },
+  trio:   { label: 'Trio',   cols: [0.62, 0.38], rows: [0.5, 0.5], spans: [[0, 0, 1, 2], [1, 0, 1, 1], [1, 1, 1, 1]] },
+  quad:   { label: 'Quad',   cols: [0.5, 0.5],   rows: [0.5, 0.5], spans: [[0, 0, 1, 1], [1, 0, 1, 1], [0, 1, 1, 1], [1, 1, 1, 1]] },
+  strip:  { label: 'Strip',  cols: [0.5, 0.5],   rows: [0.55, 0.45], spans: [[0, 0, 2, 1], [0, 1, 1, 1], [1, 1, 1, 1]] },
+  column: { label: 'Column', cols: [1 / 3, 1 / 3, 1 / 3], rows: [1], spans: [[0, 0, 1, 1], [1, 0, 1, 1], [2, 0, 1, 1]] },
 };
 
-// A grade is a tint ramp (colour + opacity stops), a flat veil, and the
-// three colours of the headline bar. `grey` grades wash the photo to
-// black-and-white before the ramp goes on.
-export const COLOUR_GRADES = {
+// --- hex moods: the colour grades ----------------------------------------
+//
+// A mood is a vertical tint ramp (hex stops with an alpha each), a flat
+// wash laid over the whole slot, a three-colour bar for the headline, and
+// a flag that says the photo goes grey before any tint touches it.
+export const MOODS = {
   sunset: { label: 'Vice Sunset', grey: false,
-    ramp: [[0, '255,150,60', 0], [0.55, '255,110,70', 0.18], [1, '214,40,130', 0.55]],
-    veil: 'rgba(255,120,40,0.10)', accent: ['#ff2e88', '#ff7a18', '#22d3ee'] },
+    stops: [{ at: 0, hex: '#ff963c', a: 0 }, { at: 0.55, hex: '#ff6e46', a: 0.18 }, { at: 1, hex: '#d62882', a: 0.55 }],
+    wash: { hex: '#ff7828', a: 0.10 }, bar: ['#ff2e88', '#ff7a18', '#22d3ee'] },
   neon: { label: 'Neon Nights', grey: false,
-    ramp: [[0, '255,0,170', 0.42], [0.5, '120,40,220', 0.18], [1, '0,210,255', 0.42]],
-    veil: 'rgba(160,0,200,0.10)', accent: ['#ff00aa', '#7b2ff7', '#00d2ff'] },
+    stops: [{ at: 0, hex: '#ff00aa', a: 0.42 }, { at: 0.5, hex: '#7828dc', a: 0.18 }, { at: 1, hex: '#00d2ff', a: 0.42 }],
+    wash: { hex: '#a000c8', a: 0.10 }, bar: ['#ff00aa', '#7b2ff7', '#00d2ff'] },
   dusk: { label: 'Palm Dusk', grey: false,
-    ramp: [[0, '0,190,170', 0.30], [0.55, '40,90,180', 0.16], [1, '110,40,170', 0.50]],
-    veil: 'rgba(20,120,160,0.10)', accent: ['#2ee6c8', '#6a5cff', '#ff2e88'] },
+    stops: [{ at: 0, hex: '#00beaa', a: 0.30 }, { at: 0.55, hex: '#285ab4', a: 0.16 }, { at: 1, hex: '#6e28aa', a: 0.50 }],
+    wash: { hex: '#1478a0', a: 0.10 }, bar: ['#2ee6c8', '#6a5cff', '#ff2e88'] },
   noir: { label: 'Mono Noir', grey: true,
-    ramp: [[0, '0,0,0', 0], [1, '0,0,0', 0.28]],
-    veil: 'rgba(0,0,0,0.12)', accent: ['#ffffff', '#9a92ad', '#55506a'] },
+    stops: [{ at: 0, hex: '#000000', a: 0 }, { at: 1, hex: '#000000', a: 0.28 }],
+    wash: { hex: '#000000', a: 0.12 }, bar: ['#ffffff', '#9a92ad', '#55506a'] },
   gold: { label: 'Golden Hour', grey: false,
-    ramp: [[0, '255,214,100', 0], [0.5, '255,170,40', 0.16], [1, '180,90,0', 0.50]],
-    veil: 'rgba(255,190,60,0.10)', accent: ['#ffd664', '#ffaa28', '#ff7a18'] },
+    stops: [{ at: 0, hex: '#ffd664', a: 0 }, { at: 0.5, hex: '#ffaa28', a: 0.16 }, { at: 1, hex: '#b45a00', a: 0.50 }],
+    wash: { hex: '#ffbe3c', a: 0.10 }, bar: ['#ffd664', '#ffaa28', '#ff7a18'] },
   midnight: { label: 'Midnight Drive', grey: false,
-    ramp: [[0, '0,140,255', 0.32], [0.5, '60,60,200', 0.18], [1, '8,0,48', 0.55]],
-    veil: 'rgba(0,90,220,0.10)', accent: ['#00c2ff', '#4d7cfe', '#b45cff'] },
+    stops: [{ at: 0, hex: '#008cff', a: 0.32 }, { at: 0.5, hex: '#3c3cc8', a: 0.18 }, { at: 1, hex: '#080030', a: 0.55 }],
+    wash: { hex: '#005adc', a: 0.10 }, bar: ['#00c2ff', '#4d7cfe', '#b45cff'] },
 };
 
-// Per-panel photo tones, applied when the photo is drawn (before the grade).
-export const PHOTO_TONES = {
-  none:  { label: 'Original', filter: '' },
-  mono:  { label: 'B&W',      filter: 'grayscale(1) contrast(1.08)' },
-  sepia: { label: 'Sepia',    filter: 'sepia(0.9) contrast(1.05) brightness(1.02)' },
-  punch: { label: 'Punch',    filter: 'saturate(1.7) contrast(1.18)' },
+// --- numeric photo filters -------------------------------------------------
+//
+// A filter is a recipe of five numbers; the painter builds the canvas
+// filter string from them, leaving out any step that would change nothing.
+export const FILTERS = {
+  none:  { label: 'Original', gray: 0, sepia: 0, sat: 1, con: 1, bright: 1 },
+  mono:  { label: 'B&W',      gray: 1, sepia: 0, sat: 1, con: 1.08, bright: 1 },
+  sepia: { label: 'Sepia',    gray: 0, sepia: 0.9, sat: 1, con: 1.05, bright: 1.02 },
+  punch: { label: 'Punch',    gray: 0, sepia: 0, sat: 1.7, con: 1.18, bright: 1 },
 };
 
-function bound(value, low, high) {
-  return value < low ? low : value > high ? high : value;
+// '#rrggbb' + alpha -> 'rgba(r,g,b,a)'.
+function hexA(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }
 
-function paintGap(w, h) {
+function clampTo(value, low, high) {
+  if (value < low) return low;
+  if (value > high) return high;
+  return value;
+}
+
+// The gap between panels, in pixels: a hairline on small canvases, a
+// visible gutter on posters.
+function gutterPx(w, h) {
   return Math.max(3, Math.round(Math.min(w, h) * 0.008));
 }
 
-// Fraction boxes -> pixel boxes. Interior edges lose half a gutter each
-// side; the outer edges stay flush with the canvas, like a poster bleed.
-export function panelBoxes(layout, w, h) {
-  const spec = PANEL_LAYOUTS[layout] || PANEL_LAYOUTS.hero;
-  const g = paintGap(w, h);
-  return spec.boxes.map(([fx, fy, fw, fh]) => {
-    const x0 = fx * w;
-    const y0 = fy * h;
-    const x1 = (fx + fw) * w;
-    const y1 = (fy + fh) * h;
-    const left = fx > 0 ? x0 + g / 2 : x0;
-    const top = fy > 0 ? y0 + g / 2 : y0;
-    const right = fx + fw < 1 ? x1 - g / 2 : x1;
-    const bottom = fy + fh < 1 ? y1 - g / 2 : y1;
-    return { x: left, y: top, w: right - left, h: bottom - top };
+// Column weights -> pixel edges along one axis: [0, ..., total].
+function weightedEdges(weights, total) {
+  const edges = [0];
+  let soFar = 0;
+  for (const weight of weights) {
+    soFar += weight;
+    edges.push(soFar * total);
+  }
+  return edges;
+}
+
+// Grid spec -> pixel slots. A slot that touches the board edge stays flush
+// with it; a slot on an interior edge gives up half a gutter, so the gap
+// between two neighbours is exactly one gutter wide.
+export function computeSlots(arrange, w, h) {
+  const spec = GRID_LAYOUTS[arrange] || GRID_LAYOUTS.hero;
+  const gap = gutterPx(w, h);
+  const xs = weightedEdges(spec.cols, w);
+  const ys = weightedEdges(spec.rows, h);
+  const colCount = spec.cols.length;
+  const rowCount = spec.rows.length;
+  return spec.spans.map(([col, row, colSpan, rowSpan]) => {
+    let x = xs[col];
+    let y = ys[row];
+    let x2 = xs[col + colSpan];
+    let y2 = ys[row + rowSpan];
+    if (col > 0) x += gap / 2;
+    if (row > 0) y += gap / 2;
+    if (col + colSpan < colCount) x2 -= gap / 2;
+    if (row + rowSpan < rowCount) y2 -= gap / 2;
+    return { x, y, w: x2 - x, h: y2 - y };
   });
 }
 
-function coverFit(photoW, photoH, boxW, boxH, scale) {
-  return Math.max(boxW / photoW, boxH / photoH) * (scale || 1);
+// Zoom that makes the photo cover its slot (never letterboxed), times the
+// person's own zoom on top.
+function fitZoom(imgW, imgH, slotW, slotH, zoom) {
+  return Math.max(slotW / imgW, slotH / imgH) * (zoom || 1);
 }
 
-// One panel: the photo (cover-fit, panned, zoomed, toned), the grade, a
-// vignette, and the white poster frame. An empty panel gets a dashed
-// "add photo" frame instead of a picture.
-function paintPhoto(ctx, box, cell, grade) {
+// Build the canvas filter string for one slot: the slot's own filter,
+// plus a grey wash when the mood asks for it.
+function filterFor(slot, mood) {
+  const recipe = FILTERS[slot.filter] || FILTERS.none;
+  const parts = [];
+  if (recipe.gray) parts.push(`grayscale(${recipe.gray})`);
+  if (recipe.sepia) parts.push(`sepia(${recipe.sepia})`);
+  if (recipe.sat !== 1) parts.push(`saturate(${recipe.sat})`);
+  if (recipe.con !== 1) parts.push(`contrast(${recipe.con})`);
+  if (recipe.bright !== 1) parts.push(`brightness(${recipe.bright})`);
+  if (mood.grey) parts.push('grayscale(1) contrast(1.12) brightness(1.02)');
+  return parts.join(' ');
+}
+
+// One slot: the photo (cover-fit, panned, zoomed, filtered), the mood's
+// tint ramp and wash, a vignette, and the white poster frame. A slot with
+// no photo yet gets a dashed frame and a prompt instead of a picture.
+function drawSlot(ctx, slot, cell, mood) {
   ctx.save();
   ctx.beginPath();
-  ctx.rect(box.x, box.y, box.w, box.h);
+  ctx.rect(slot.x, slot.y, slot.w, slot.h);
   ctx.clip();
-  if (cell && cell.photo) {
-    const pw = cell.photo.naturalWidth;
-    const ph = cell.photo.naturalHeight;
-    const k = coverFit(pw, ph, box.w, box.h, cell.scale);
-    const dw = pw * k;
-    const dh = ph * k;
-    const slackX = Math.max(0, (dw - box.w) / 2);
-    const slackY = Math.max(0, (dh - box.h) / 2);
-    const px = bound(cell.dx || 0, -slackX, slackX);
-    const py = bound(cell.dy || 0, -slackY, slackY);
-    const tone = PHOTO_TONES[cell.tone] || PHOTO_TONES.none;
-    const fx = [tone.filter, grade.grey ? 'grayscale(1) contrast(1.12) brightness(1.02)' : '']
-      .filter(Boolean).join(' ');
-    if (fx) ctx.filter = fx;
-    ctx.drawImage(cell.photo, box.x + (box.w - dw) / 2 + px, box.y + (box.h - dh) / 2 + py, dw, dh);
+  if (cell && cell.img) {
+    const imgW = cell.img.naturalWidth;
+    const imgH = cell.img.naturalHeight;
+    const zoom = fitZoom(imgW, imgH, slot.w, slot.h, cell.zoom);
+    const drawnW = imgW * zoom;
+    const drawnH = imgH * zoom;
+    const freeX = Math.max(0, (drawnW - slot.w) / 2);
+    const freeY = Math.max(0, (drawnH - slot.h) / 2);
+    const shiftX = clampTo(cell.ox || 0, -freeX, freeX);
+    const shiftY = clampTo(cell.oy || 0, -freeY, freeY);
+    const filter = filterFor(cell, mood);
+    if (filter) ctx.filter = filter;
+    ctx.drawImage(cell.img, slot.x + (slot.w - drawnW) / 2 + shiftX, slot.y + (slot.h - drawnH) / 2 + shiftY, drawnW, drawnH);
     ctx.filter = 'none';
   } else {
     ctx.fillStyle = '#241a30';
-    ctx.fillRect(box.x, box.y, box.w, box.h);
+    ctx.fillRect(slot.x, slot.y, slot.w, slot.h);
     ctx.setLineDash([10, 8]);
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
     ctx.lineWidth = 2;
-    ctx.strokeRect(box.x + 8, box.y + 8, box.w - 16, box.h - 16);
+    ctx.strokeRect(slot.x + 8, slot.y + 8, slot.w - 16, slot.h - 16);
     ctx.setLineDash([]);
     ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.font = `${Math.round(Math.min(box.w, box.h) * 0.06)}px sans-serif`;
+    ctx.font = `${Math.round(Math.min(slot.w, slot.h) * 0.06)}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('ADD PHOTO', box.x + box.w / 2, box.y + box.h / 2);
+    ctx.fillText('ADD PHOTO', slot.x + slot.w / 2, slot.y + slot.h / 2);
   }
-  // Grade: a vertical tint ramp in overlay, then the flat veil.
-  const ramp = ctx.createLinearGradient(box.x, box.y, box.x, box.y + box.h);
-  for (const [at, rgb, alpha] of grade.ramp) ramp.addColorStop(at, `rgba(${rgb},${alpha})`);
+  // Mood: a vertical tint ramp blended in overlay, then the flat wash.
+  const ramp = ctx.createLinearGradient(slot.x, slot.y, slot.x, slot.y + slot.h);
+  for (const stop of mood.stops) ramp.addColorStop(stop.at, hexA(stop.hex, stop.a));
   ctx.globalCompositeOperation = 'overlay';
   ctx.fillStyle = ramp;
-  ctx.fillRect(box.x, box.y, box.w, box.h);
+  ctx.fillRect(slot.x, slot.y, slot.w, slot.h);
   ctx.globalCompositeOperation = 'source-over';
-  ctx.fillStyle = grade.veil;
-  ctx.fillRect(box.x, box.y, box.w, box.h);
-  // Vignette: darken the corners so the panels read as one poster.
-  const cx = box.x + box.w / 2;
-  const cy = box.y + box.h / 2;
-  const shade = ctx.createRadialGradient(cx, cy, Math.min(box.w, box.h) * 0.3, cx, cy, Math.max(box.w, box.h) * 0.72);
+  ctx.fillStyle = hexA(mood.wash.hex, mood.wash.a);
+  ctx.fillRect(slot.x, slot.y, slot.w, slot.h);
+  // Vignette: pull the corners down so the slots read as one poster.
+  const midX = slot.x + slot.w / 2;
+  const midY = slot.y + slot.h / 2;
+  const shade = ctx.createRadialGradient(midX, midY, Math.min(slot.w, slot.h) * 0.3, midX, midY, Math.max(slot.w, slot.h) * 0.72);
   shade.addColorStop(0, 'rgba(0,0,0,0)');
   shade.addColorStop(1, 'rgba(0,0,0,0.35)');
   ctx.fillStyle = shade;
-  ctx.fillRect(box.x, box.y, box.w, box.h);
+  ctx.fillRect(slot.x, slot.y, slot.w, slot.h);
   ctx.restore();
-  // White poster frame around the panel.
+  // White poster frame around the slot.
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,0.92)';
-  ctx.lineWidth = Math.max(2, Math.round(Math.min(box.w, box.h) * 0.004));
-  ctx.strokeRect(box.x + 1, box.y + 1, box.w - 2, box.h - 2);
+  ctx.lineWidth = Math.max(2, Math.round(Math.min(slot.w, slot.h) * 0.004));
+  ctx.strokeRect(slot.x + 1, slot.y + 1, slot.w - 2, slot.h - 2);
   ctx.restore();
 }
 
-// The headline: a scrim band, display type fitted to the width in one
-// measurement, a heavy outline, and the grade's accent bar underneath.
-function paintHeadline(ctx, board, w, h) {
-  const words = (board.headline || '').trim().toUpperCase();
+// The headline: a scrim band at the top or the bottom, display type
+// shrunk step by step until it fits the width, a heavy outline, and the
+// mood's accent bar underneath.
+function drawTitle(ctx, poster, w, h) {
+  const words = (poster.title || '').trim().toUpperCase();
   if (!words) return;
-  const grade = COLOUR_GRADES[board.grade] || COLOUR_GRADES.sunset;
-  const onTop = board.headlineSpot === 'top';
-  const band = h * 0.3;
-  const bandY = onTop ? 0 : h - band;
-  const scrim = ctx.createLinearGradient(0, bandY, 0, bandY + band);
-  scrim.addColorStop(onTop ? 0 : 1, 'rgba(5,3,10,0.72)');
-  scrim.addColorStop(onTop ? 1 : 0, 'rgba(5,3,10,0)');
+  const mood = MOODS[poster.mood] || MOODS.sunset;
+  const upTop = poster.titleAt === 'top';
+  const bandH = h * 0.3;
+  const bandY = upTop ? 0 : h - bandH;
+  const scrim = ctx.createLinearGradient(0, bandY, 0, bandY + bandH);
+  scrim.addColorStop(upTop ? 0 : 1, 'rgba(5,3,10,0.72)');
+  scrim.addColorStop(upTop ? 1 : 0, 'rgba(5,3,10,0)');
   ctx.fillStyle = scrim;
-  ctx.fillRect(0, bandY, w, band);
-  // Size the words to the canvas, then shrink once to fit 88% of the width.
+  ctx.fillRect(0, bandY, w, bandH);
+  // Start big, then shrink in 8% steps until the words fit 88% of the width.
   const face = (px) => `${px}px "Bebas Neue", "Archivo Black", "Arial Black", sans-serif`;
-  let size = h * 0.13 * (board.headlineScale || 1);
+  let size = h * 0.13 * (poster.titleSize || 1);
+  const limit = w * 0.88;
   ctx.font = face(size);
-  const tooWide = ctx.measureText(words).width / (w * 0.88);
-  if (tooWide > 1) {
-    size = Math.max(16, Math.floor(size / tooWide));
+  while (ctx.measureText(words).width > limit && size > 16) {
+    size = Math.floor(size * 0.92);
     ctx.font = face(size);
   }
-  const base = onTop ? bandY + band * 0.62 : h - h * 0.045;
+  const baseline = upTop ? bandY + bandH * 0.62 : h - h * 0.045;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = '#0a0612';
   ctx.lineWidth = Math.max(4, size * 0.1);
-  ctx.fillStyle = board.headlineInk || '#ffffff';
+  ctx.fillStyle = poster.titleInk || '#ffffff';
   ctx.shadowColor = 'rgba(0,0,0,0.55)';
   ctx.shadowBlur = size * 0.12;
   ctx.shadowOffsetY = size * 0.03;
-  ctx.strokeText(words, w / 2, base);
-  ctx.fillText(words, w / 2, base);
+  ctx.strokeText(words, w / 2, baseline);
+  ctx.fillText(words, w / 2, baseline);
   ctx.shadowColor = 'transparent';
   ctx.shadowBlur = 0;
   ctx.shadowOffsetY = 0;
-  // The accent bar under the words, in the grade's own colours.
-  const wide = ctx.measureText(words).width;
-  const thick = Math.max(3, size * 0.045);
-  const bar = ctx.createLinearGradient(w / 2 - wide / 2, 0, w / 2 + wide / 2, 0);
-  const [c0, c1, c2] = grade.accent;
-  bar.addColorStop(0, c0);
-  bar.addColorStop(0.5, c1);
-  bar.addColorStop(1, c2);
+  // The accent bar under the words, in the mood's own colours.
+  const textW = ctx.measureText(words).width;
+  const barH = Math.max(3, size * 0.045);
+  const bar = ctx.createLinearGradient(w / 2 - textW / 2, 0, w / 2 + textW / 2, 0);
+  const [first, mid, last] = mood.bar;
+  bar.addColorStop(0, first);
+  bar.addColorStop(0.5, mid);
+  bar.addColorStop(1, last);
   ctx.fillStyle = bar;
-  ctx.fillRect(w / 2 - wide / 2, base + size * 0.16, wide, thick);
+  ctx.fillRect(w / 2 - textW / 2, baseline + size * 0.16, textW, barH);
 }
 
-// Paints the whole cover for `board` onto the canvas, at the canvas's own size.
-export function renderPoster(canvas, board) {
+// The tagline: a second line of type the person can park anywhere on the
+// cover (fractions of the width and height), in Archivo Black so it reads
+// as a different voice from the Bebas headline.
+function drawTagline(ctx, poster, w, h) {
+  const tag = poster.tagline;
+  if (!tag) return;
+  const words = (tag.text || '').trim().toUpperCase();
+  if (!words) return;
+  const size = Math.max(14, h * (tag.size || 0.045));
+  const x = (tag.x ?? 0.5) * w;
+  const y = (tag.y ?? 0.1) * h;
+  ctx.save();
+  ctx.font = `${size}px "Archivo Black", "Arial Black", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(5,3,10,0.85)';
+  ctx.lineWidth = Math.max(3, size * 0.08);
+  ctx.fillStyle = tag.ink || '#ffffff';
+  ctx.strokeText(words, x, y);
+  ctx.fillText(words, x, y);
+  ctx.restore();
+}
+
+// Paints the whole poster for `poster` onto the canvas, at the canvas's own size.
+export function drawCover(canvas, poster) {
   const ctx = canvas.getContext('2d');
-  const { width: w, height: h } = canvas;
-  const grade = COLOUR_GRADES[board.grade] || COLOUR_GRADES.sunset;
+  const w = canvas.width;
+  const h = canvas.height;
+  const mood = MOODS[poster.mood] || MOODS.sunset;
   ctx.fillStyle = '#0b0910';
   ctx.fillRect(0, 0, w, h);
-  const boxes = panelBoxes(board.layout, w, h);
-  const total = (PANEL_LAYOUTS[board.layout] || PANEL_LAYOUTS.hero).cells;
-  for (let i = 0; i < total; i++) paintPhoto(ctx, boxes[i], board.cells[i], grade);
-  paintHeadline(ctx, board, w, h);
+  const slots = computeSlots(poster.arrange, w, h);
+  const spec = GRID_LAYOUTS[poster.arrange] || GRID_LAYOUTS.hero;
+  for (let i = 0; i < spec.spans.length; i++) {
+    drawSlot(ctx, slots[i], poster.slots[i], mood);
+  }
+  drawTitle(ctx, poster, w, h);
+  drawTagline(ctx, poster, w, h);
 }
