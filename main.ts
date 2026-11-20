@@ -60,6 +60,15 @@ for (const f of shotFiles) {
   }
 }
 
+// A screenshot must actually be a JPEG, not a renamed file: refuse one
+// whose first bytes are not the JPEG magic (FF D8 FF).
+for (const f of shotFiles) {
+  const head = readFileSync(join(shotsDir, f)).subarray(0, 3);
+  if (head[0] !== 0xff || head[1] !== 0xd8 || head[2] !== 0xff) {
+    throw new Error(`screenshot ${f} is not a JPEG file`);
+  }
+}
+
 // Every shot shots.json declares must have its file on disk, so a renamed
 // shot can never ship a cover the dossier does not show.
 let declared: { name?: unknown }[];
@@ -111,12 +120,13 @@ const dossier = buildDossier(outDir, {
 });
 writeFileSync(join(outDir, 'dossier.json'), dossier);
 
-// The dossier the judge reads must carry the cover summary, the image
-// list, the schema and the text: refuse a dossier that lost a section.
-// (buildDossier returns canonical JSON bytes, not a string.)
-const dossierJson = JSON.parse(new TextDecoder().decode(dossier)) as Record<string, unknown>;
-for (const key of ['cover', 'images', 'schema', 'text']) {
-  if (!(key in dossierJson)) {
-    throw new Error(`dossier.json is missing its ${key} section`);
-  }
+// The dossier on disk must be the one we just wrote: read it back, parse
+// it, and refuse it when its image list does not match the screenshots we
+// shipped or its cover summary is empty.
+const written = JSON.parse(readFileSync(join(outDir, 'dossier.json'), 'utf8')) as Record<string, unknown>;
+if (!Array.isArray(written.images) || written.images.length !== shotFiles.length) {
+  throw new Error(`dossier.json lists ${Array.isArray(written.images) ? written.images.length : 0} images, but screenshots/ has ${shotFiles.length}`);
+}
+if (typeof written.cover !== 'number' || written.cover < 0 || written.cover >= written.images.length) {
+  throw new Error(`dossier.json cover index ${String(written.cover)} does not point at one of its ${written.images.length} images`);
 }

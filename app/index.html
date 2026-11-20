@@ -29,8 +29,19 @@
       </div>
       <label>Or your own photo <input id="photo" type="file" accept="image/*"></label>
       <label>Zoom <input id="zoom" type="range" min="1" max="4" step="0.05" value="1"></label>
-      <p class="hint">Drag the photo on the canvas to reposition it, scroll to zoom. Keys 1–4 pick a panel, double-click resets its crop.</p>
+      <p class="hint">Drag the photo on the canvas to reposition it, scroll to zoom. Keys 1–4 pick a panel, double-click resets its crop. Give the picked panel a photo filter below.</p>
       <button id="resetCrop" type="button">Reset crop</button>
+    </fieldset>
+
+    <fieldset>
+      <legend>Photo filter — applies to the picked panel</legend>
+      <div class="row filters" role="group" aria-label="Photo filter">
+        <button type="button" data-tone="none" class="active">Original</button>
+        <button type="button" data-tone="mono">B&amp;W</button>
+        <button type="button" data-tone="sepia">Sepia</button>
+        <button type="button" data-tone="punch">Punch</button>
+      </div>
+      <p class="hint">A filter tones one panel's photo before the colour grade goes on, and it ships in the exported PNG.</p>
     </fieldset>
 
     <fieldset>

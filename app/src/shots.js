@@ -1,21 +1,20 @@
 // Fixed scenes for screenshots: ?shot=editor shows the page with sample
 // photos loaded; ?shot=cover shows the cover alone, at the size the query
-// names (cw/ch). `photo`, `photo2`, `photo3`, `photo4` pick the sample for
-// each panel, `caption` the words, `layout` and `grade` the look.
-// window.__shotReady is set once the scene has painted with fonts loaded.
-export async function runShot(shot, query, setup, redraw) {
-  if (shot === 'cover') document.body.classList.add('shot-cover');
-  if (shot !== 'cover' && shot !== 'editor') {
-    // An unknown scene name is a broken screenshot setup, not a hang.
-    window.__shotError = `unknown shot: ${shot}`;
+// names (cw/ch). `photo`..`photo4` pick the sample for each panel, `tone`
+// and `tone2`..`tone4` its photo filter, `caption` the words, `layout` and
+// `grade` the look. window.__shotReady is set once the scene has painted
+// with fonts loaded; a bad scene reports itself instead of hanging.
+export async function playScene(scene, query, configure, paint) {
+  if (scene === 'cover') document.body.classList.add('shot-cover');
+  if (scene !== 'cover' && scene !== 'editor') {
+    window.__shotError = `unknown shot: ${scene}`;
     window.__shotReady = true;
     return;
   }
   try {
-    await setup(query);
-  } catch (e) {
-    // A failed scene reports itself instead of hanging the screenshot.
-    window.__shotError = String((e && e.message) || e);
+    await configure(query);
+  } catch (err) {
+    window.__shotError = String((err && err.message) || err);
     window.__shotReady = true;
     return;
   }
@@ -24,8 +23,8 @@ export async function runShot(shot, query, setup, redraw) {
       document.fonts.load('100px "Bebas Neue"'),
       document.fonts.load('100px "Archivo Black"'),
     ]);
-  } catch (e) { /* fall back to the system stack */ }
-  redraw();
+  } catch { /* fall back to the system stack */ }
+  paint();
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   window.__shotReady = true;
 }
